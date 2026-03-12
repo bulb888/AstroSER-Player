@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#1a1a3e"/>
+      <stop offset="100%" stop-color="#0a0a1a"/>
+    </radialGradient>
+    <radialGradient id="sun" cx="45%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#fff4c0"/>
+      <stop offset="30%" stop-color="#ffcc33"/>
+      <stop offset="70%" stop-color="#ff8800"/>
+      <stop offset="100%" stop-color="#cc4400"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#ffaa00" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#ffaa00" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="120" fill="url(#bg)" stroke="#334" stroke-width="4"/>
+  <!-- Stars -->
+  <circle cx="40" cy="50" r="2" fill="#ffffff" opacity="0.8"/>
+  <circle cx="200" cy="40" r="1.5" fill="#ffffff" opacity="0.6"/>
+  <circle cx="220" cy="90" r="2" fill="#ffffff" opacity="0.7"/>
+  <circle cx="55" cy="200" r="1.5" fill="#ffffff" opacity="0.5"/>
+  <circle cx="180" cy="210" r="2" fill="#ffffff" opacity="0.6"/>
+  <circle cx="30" cy="130" r="1.5" fill="#ffffff" opacity="0.4"/>
+  <circle cx="210" cy="160" r="1" fill="#ffffff" opacity="0.7"/>
+  <circle cx="70" cy="80" r="1" fill="#ffffff" opacity="0.5"/>
+  <!-- Sun glow -->
+  <circle cx="128" cy="120" r="70" fill="url(#glow)"/>
+  <!-- Sun body -->
+  <circle cx="128" cy="120" r="42" fill="url(#sun)"/>
+  <!-- Sun surface details -->
+  <ellipse cx="115" cy="110" rx="8" ry="5" fill="#ffaa00" opacity="0.5"/>
+  <ellipse cx="140" cy="125" rx="6" ry="4" fill="#ee7700" opacity="0.4"/>
+  <!-- Film strip bottom -->
+  <rect x="28" y="185" width="200" height="36" rx="4" fill="#222" stroke="#555" stroke-width="1.5"/>
+  <!-- Film perforations -->
+  <rect x="34" y="190" width="8" height="10" rx="2" fill="#0a0a1a"/>
+  <rect x="34" y="205" width="8" height="10" rx="2" fill="#0a0a1a"/>
+  <rect x="214" y="190" width="8" height="10" rx="2" fill="#0a0a1a"/>
+  <rect x="214" y="205" width="8" height="10" rx="2" fill="#0a0a1a"/>
+  <!-- Film frames -->
+  <rect x="50" y="190" width="24" height="26" rx="1" fill="#1a1a3e" stroke="#444" stroke-width="0.5"/>
+  <rect x="78" y="190" width="24" height="26" rx="1" fill="#1a2a3e" stroke="#444" stroke-width="0.5"/>
+  <rect x="106" y="190" width="24" height="26" rx="1" fill="#1a1a3e" stroke="#444" stroke-width="0.5"/>
+  <rect x="134" y="190" width="24" height="26" rx="1" fill="#1a2a3e" stroke="#444" stroke-width="0.5"/>
+  <rect x="162" y="190" width="24" height="26" rx="1" fill="#1a1a3e" stroke="#444" stroke-width="0.5"/>
+  <rect x="190" y="190" width="20" height="26" rx="1" fill="#1a2a3e" stroke="#444" stroke-width="0.5"/>
+  <!-- Small sun in film frames -->
+  <circle cx="62" cy="203" r="6" fill="#ff8800" opacity="0.7"/>
+  <circle cx="90" cy="203" r="6" fill="#ffaa00" opacity="0.7"/>
+  <circle cx="118" cy="203" r="6" fill="#ff8800" opacity="0.7"/>
+  <circle cx="146" cy="203" r="6" fill="#ffaa00" opacity="0.7"/>
+  <circle cx="174" cy="203" r="6" fill="#ff8800" opacity="0.7"/>
+  <circle cx="200" cy="203" r="5" fill="#ffaa00" opacity="0.7"/>
+  <!-- Play triangle -->
+  <polygon points="120,100 120,140 150,120" fill="#ffffff" opacity="0.15"/>
+</svg>
