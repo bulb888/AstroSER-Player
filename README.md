@@ -1,11 +1,9 @@
+[English](README_en.md) | **中文**
+
 # AstroSER Player
 
 跨平台 SER 天文视频文件播放器，专为行星相机（ZWO ASI 等）拍摄的 SER 格式视频设计。
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue)
-![PySide6](https://img.shields.io/badge/UI-PySide6-green)
-![OpenGL](https://img.shields.io/badge/Render-OpenGL-orange)
-![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ## 功能
 
@@ -37,6 +35,10 @@
 
 ## 安装与运行
 
+### 下载可执行文件
+
+前往 [Releases](https://github.com/bulb888/AstroSER-Player/releases) 页面下载 `AstroSER Player.exe`，双击即可运行（Windows 10/11）。
+
 ### 从源码运行
 
 ```bash
@@ -50,10 +52,6 @@ pip install PySide6 numpy scipy PyOpenGL
 # 运行
 python run.py
 ```
-
-### 下载可执行文件
-
-前往 [Releases](https://github.com/bulb888/AstroSER-Player/releases) 页面下载 `AstroSER Player.exe`，双击即可运行（Windows 10/11）。
 
 ## 打包
 
