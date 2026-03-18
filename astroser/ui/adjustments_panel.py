@@ -8,6 +8,14 @@ from PySide6.QtWidgets import (
 
 from .i18n import tr, I18n
 
+_SLIDER_LABEL_STYLE = (
+    "QLabel { color: #b0b0b0; font-size: 12px; font-weight: 500; min-width: 54px; }"
+)
+_VALUE_LABEL_STYLE = (
+    "QLabel { color: #d0d0d0; font-size: 12px; font-family: 'Cascadia Mono', 'Consolas', monospace; "
+    "font-weight: 500; min-width: 38px; }"
+)
+
 
 class _LabeledSlider(QWidget):
     """Slider with label and value display."""
@@ -23,9 +31,10 @@ class _LabeledSlider(QWidget):
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 2, 0, 2)
+        layout.setSpacing(6)
 
         self._label = QLabel(label)
-        self._label.setMinimumWidth(50)
+        self._label.setStyleSheet(_SLIDER_LABEL_STYLE)
         layout.addWidget(self._label)
 
         self._slider = QSlider(Qt.Orientation.Horizontal)
@@ -36,8 +45,8 @@ class _LabeledSlider(QWidget):
         layout.addWidget(self._slider, stretch=1)
 
         self._value_label = QLabel(f"{default:.2f}")
-        self._value_label.setMinimumWidth(40)
-        self._value_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self._value_label.setStyleSheet(_VALUE_LABEL_STYLE)
+        self._value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self._value_label)
 
     def set_label(self, text: str) -> None:
@@ -71,6 +80,7 @@ class AdjustmentsPanel(QWidget):
 
         self._group = QGroupBox()
         group_layout = QVBoxLayout(self._group)
+        group_layout.setSpacing(4)
 
         self._brightness = _LabeledSlider("", -1.0, 1.0, 0.0, 0.01)
         self._brightness.value_changed.connect(lambda _: self.adjustments_changed.emit())
@@ -85,13 +95,19 @@ class AdjustmentsPanel(QWidget):
         group_layout.addWidget(self._gamma)
 
         stretch_row = QHBoxLayout()
+        stretch_row.setContentsMargins(0, 2, 0, 2)
         self._auto_stretch = QCheckBox()
+        self._auto_stretch.setChecked(False)
+        self._auto_stretch.setStyleSheet("QCheckBox { font-size: 11px; color: #999999; }")
         self._auto_stretch.toggled.connect(lambda _: self.adjustments_changed.emit())
         stretch_row.addWidget(self._auto_stretch)
         stretch_row.addStretch()
         group_layout.addLayout(stretch_row)
 
         self._reset_btn = QPushButton()
+        self._reset_btn.setStyleSheet(
+            "QPushButton { font-size: 11px; padding: 3px 10px; }"
+        )
         self._reset_btn.clicked.connect(self._reset)
         group_layout.addWidget(self._reset_btn)
 

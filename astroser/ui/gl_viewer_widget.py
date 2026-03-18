@@ -1,8 +1,8 @@
 """OpenGL-accelerated image viewer with GPU-based adjustments."""
 
 import numpy as np
-from PySide6.QtCore import Qt, Signal, QPointF
-from PySide6.QtGui import QMouseEvent, QWheelEvent, QPainter, QFont, QColor, QSurfaceFormat
+from PySide6.QtCore import Qt, Signal, QPointF, QRectF
+from PySide6.QtGui import QMouseEvent, QWheelEvent, QPainter, QFont, QColor, QSurfaceFormat, QPen, QBrush
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtOpenGL import (
     QOpenGLShaderProgram, QOpenGLShader, QOpenGLTexture, QOpenGLBuffer,
@@ -38,7 +38,7 @@ void main() {
 }
 """
 
-# Fragment shader: applies all adjustments on GPU
+# Fragment shader: applies debayer + all adjustments on GPU
 FRAGMENT_SHADER = """
 #version 330 core
 in vec2 vTexCoord;
@@ -57,20 +57,81 @@ uniform bool u_solarColorize;
 uniform bool u_isMono;
 uniform float u_maxVal;
 
-void main() {
-    vec4 texel = texture(u_texture, vTexCoord);
-    vec3 color;
+// Bayer demosaic uniforms
+uniform bool u_isBayer;
+uniform vec2 u_bayerRedOffset;   // (col, row) of red pixel in 2x2 block
+uniform vec2 u_bayerBlueOffset;  // (col, row) of blue pixel in 2x2 block
 
-    if (u_isMono) {
-        float v = texel.r;
-        color = vec3(v, v, v);
+float fetchBayer(ivec2 p, ivec2 sz) {
+    p = clamp(p, ivec2(0), sz - 1);
+    return texelFetch(u_texture, p, 0).r;
+}
+
+vec3 debayer_bilinear(vec2 texCoord) {
+    ivec2 sz = textureSize(u_texture, 0);
+    ivec2 pix = ivec2(texCoord * vec2(sz));
+    pix = clamp(pix, ivec2(0), sz - 1);
+
+    // Integer Bayer block position — no float precision issues
+    ivec2 blockPos = pix % 2;
+    ivec2 rOff = ivec2(u_bayerRedOffset + 0.5);
+    ivec2 bOff = ivec2(u_bayerBlueOffset + 0.5);
+
+    float c  = fetchBayer(pix, sz);
+    float t  = fetchBayer(pix + ivec2( 0, -1), sz);
+    float b  = fetchBayer(pix + ivec2( 0,  1), sz);
+    float l  = fetchBayer(pix + ivec2(-1,  0), sz);
+    float r  = fetchBayer(pix + ivec2( 1,  0), sz);
+    float tl = fetchBayer(pix + ivec2(-1, -1), sz);
+    float tr = fetchBayer(pix + ivec2( 1, -1), sz);
+    float bl = fetchBayer(pix + ivec2(-1,  1), sz);
+    float br = fetchBayer(pix + ivec2( 1,  1), sz);
+
+    float red, green, blue;
+
+    if (blockPos == rOff) {
+        // Red pixel
+        red = c;
+        green = (t + b + l + r) * 0.25;
+        blue = (tl + tr + bl + br) * 0.25;
+    } else if (blockPos == bOff) {
+        // Blue pixel
+        blue = c;
+        green = (t + b + l + r) * 0.25;
+        red = (tl + tr + bl + br) * 0.25;
+    } else if (blockPos.y == rOff.y) {
+        // Green pixel on red row
+        red = (l + r) * 0.5;
+        green = c;
+        blue = (t + b) * 0.5;
     } else {
-        color = texel.rgb;
+        // Green pixel on blue row
+        blue = (l + r) * 0.5;
+        green = c;
+        red = (t + b) * 0.5;
     }
 
-    // GL auto-normalizes integer textures to [0,1] based on type max (255 or 65535).
-    // u_maxVal is the rescale factor: typeMax / pixelMax (e.g. 65535/4095 for 12-bit).
-    color *= u_maxVal;
+    return vec3(red, green, blue);
+}
+
+void main() {
+    vec3 color;
+
+    if (u_isBayer) {
+        color = debayer_bilinear(vTexCoord);
+        color *= u_maxVal;
+    } else {
+        vec4 texel = texture(u_texture, vTexCoord);
+        if (u_isMono) {
+            float v = texel.r;
+            color = vec3(v, v, v);
+        } else {
+            color = texel.rgb;
+        }
+        // GL auto-normalizes integer textures to [0,1] based on type max (255 or 65535).
+        // u_maxVal is the rescale factor: typeMax / pixelMax (e.g. 65535/4095 for 12-bit).
+        color *= u_maxVal;
+    }
 
     // Auto stretch
     if (u_autoStretch && u_autoHi > u_autoLo) {
@@ -103,6 +164,7 @@ class GLImageViewer(QOpenGLWidget):
     """OpenGL-based image viewer with GPU adjustments, zoom and pan."""
 
     zoom_changed = Signal(float)
+    roi_changed = Signal(tuple)
 
     def __init__(self, parent=None):
         fmt = QSurfaceFormat()
@@ -130,11 +192,20 @@ class GLImageViewer(QOpenGLWidget):
         self.auto_hi = 1.0
         self.solar_colorize = False
         self.is_mono = True
+        self.is_bayer = False
+        self.bayer_red_offset = (0.0, 0.0)
+        self.bayer_blue_offset = (1.0, 1.0)
         self.max_val = 1.0
 
         # Mouse pan state
         self._panning = False
         self._last_mouse = QPointF()
+
+        # ROI state (in image pixel coordinates)
+        self._roi_rect: list[int] | None = None  # [x, y, w, h]
+        self._roi_dragging = False
+        self._roi_drag_start = QPointF()
+        self._roi_start_rect: list[int] | None = None
 
         # GL objects (initialized in initializeGL)
         self._program = None
@@ -177,6 +248,9 @@ class GLImageViewer(QOpenGLWidget):
         self._u_solarColorize = GL.glGetUniformLocation(pid, "u_solarColorize")
         self._u_isMono = GL.glGetUniformLocation(pid, "u_isMono")
         self._u_maxVal = GL.glGetUniformLocation(pid, "u_maxVal")
+        self._u_isBayer = GL.glGetUniformLocation(pid, "u_isBayer")
+        self._u_bayerRedOffset = GL.glGetUniformLocation(pid, "u_bayerRedOffset")
+        self._u_bayerBlueOffset = GL.glGetUniformLocation(pid, "u_bayerBlueOffset")
         self._u_texture = GL.glGetUniformLocation(pid, "u_texture")
         self._u_solarLut = GL.glGetUniformLocation(pid, "u_solarLut")
 
@@ -290,7 +364,9 @@ class GLImageViewer(QOpenGLWidget):
                 GL.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGB8, w, h, 0,
                                 GL.GL_RGB, GL.GL_UNSIGNED_BYTE, frame_c.tobytes())
 
-        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, GL.GL_LINEAR)
+        # Bayer textures need NEAREST to preserve exact pixel values for demosaic
+        filt = GL.GL_NEAREST if self.is_bayer else GL.GL_LINEAR
+        GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER, filt)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER, GL.GL_NEAREST)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP_TO_EDGE)
         GL.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP_TO_EDGE)
@@ -320,6 +396,9 @@ class GLImageViewer(QOpenGLWidget):
         GL.glUniform1i(self._u_solarColorize, int(self.solar_colorize))
         GL.glUniform1i(self._u_isMono, int(self.is_mono))
         GL.glUniform1f(self._u_maxVal, self.max_val)
+        GL.glUniform1i(self._u_isBayer, int(self.is_bayer))
+        GL.glUniform2f(self._u_bayerRedOffset, *self.bayer_red_offset)
+        GL.glUniform2f(self._u_bayerBlueOffset, *self.bayer_blue_offset)
 
         # Bind textures
         GL.glActiveTexture(GL.GL_TEXTURE0)
@@ -330,11 +409,33 @@ class GLImageViewer(QOpenGLWidget):
         GL.glBindTexture(GL.GL_TEXTURE_1D, self._solar_lut_tex)
         GL.glUniform1i(self._u_solarLut, 1)
 
-        # Draw
+        # Draw image
         self._vao.bind()
         GL.glDrawArrays(GL.GL_TRIANGLE_STRIP, 0, 4)
         self._vao.release()
         self._program.release()
+
+        # Draw ROI overlay using QPainter (must be after GL drawing)
+        if self._roi_rect is not None:
+            self._draw_roi_overlay()
+
+    def _draw_roi_overlay(self) -> None:
+        """Draw ROI rectangle using QPainter on top of GL content."""
+        rx, ry, rw, rh = self._roi_rect
+        p1 = self._image_to_widget(rx, ry)
+        p2 = self._image_to_widget(rx + rw, ry + rh)
+
+        painter = QPainter(self)
+        painter.beginNativePainting()
+        painter.endNativePainting()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(QColor(0, 255, 0, 200))
+        pen.setWidth(2)
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(QBrush(QColor(0, 255, 0, 30)))
+        painter.drawRect(QRectF(p1, p2))
+        painter.end()
 
     def paintEvent(self, event):
         """Override to draw welcome hint when no image."""
@@ -400,14 +501,46 @@ class GLImageViewer(QOpenGLWidget):
             self.zoom_changed.emit(self._zoom)
             self.update()
 
+    def _is_inside_roi(self, pos: QPointF) -> bool:
+        """Check if a widget position is inside the ROI rectangle."""
+        if self._roi_rect is None or not self._has_image:
+            return False
+        rx, ry, rw, rh = self._roi_rect
+        p1 = self._image_to_widget(rx, ry)
+        p2 = self._image_to_widget(rx + rw, ry + rh)
+        roi_screen = QRectF(p1, p2).normalized()
+        return roi_screen.contains(pos)
+
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
-            self._panning = True
-            self._last_mouse = event.position()
-            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            if self._is_inside_roi(event.position()):
+                self._roi_dragging = True
+                self._roi_drag_start = event.position()
+                self._roi_start_rect = list(self._roi_rect)
+                self.setCursor(Qt.CursorShape.SizeAllCursor)
+            else:
+                self._panning = True
+                self._last_mouse = event.position()
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        if self._panning:
+        if self._roi_dragging and self._roi_start_rect is not None:
+            # Convert drag delta to image coordinates
+            start_img = self._widget_to_image(
+                self._roi_drag_start.x(), self._roi_drag_start.y())
+            cur_img = self._widget_to_image(
+                event.position().x(), event.position().y())
+            dx = int(cur_img.x() - start_img.x())
+            dy = int(cur_img.y() - start_img.y())
+            new_x = max(0, min(self._img_width - self._roi_start_rect[2],
+                               self._roi_start_rect[0] + dx))
+            new_y = max(0, min(self._img_height - self._roi_start_rect[3],
+                               self._roi_start_rect[1] + dy))
+            self._roi_rect[0] = new_x
+            self._roi_rect[1] = new_y
+            self.update()
+            self.roi_changed.emit(tuple(self._roi_rect))
+        elif self._panning:
             delta = event.position() - self._last_mouse
             self._offset = QPointF(
                 self._offset.x() + delta.x() / self.width() * 2.0,
@@ -415,11 +548,21 @@ class GLImageViewer(QOpenGLWidget):
             )
             self._last_mouse = event.position()
             self.update()
+        else:
+            # Update cursor when hovering over ROI
+            if self._is_inside_roi(event.position()):
+                self.setCursor(Qt.CursorShape.SizeAllCursor)
+            else:
+                self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
-            self._panning = False
-            self.setCursor(Qt.CursorShape.ArrowCursor)
+            if self._roi_dragging:
+                self._roi_dragging = False
+                self.setCursor(Qt.CursorShape.ArrowCursor)
+            elif self._panning:
+                self._panning = False
+                self.setCursor(Qt.CursorShape.ArrowCursor)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
@@ -457,6 +600,64 @@ class GLImageViewer(QOpenGLWidget):
                 if hasattr(window, 'open_file'):
                     window.open_file(filepath)
                 return
+
+    # --- ROI ---
+
+    def set_roi(self, x: int, y: int, w: int, h: int) -> None:
+        """Set ROI rectangle in image pixel coordinates."""
+        self._roi_rect = [x, y, w, h]
+        self.update()
+
+    def clear_roi(self) -> None:
+        self._roi_rect = None
+        self._roi_dragging = False
+        self.update()
+
+    def get_roi(self) -> tuple[int, int, int, int] | None:
+        if self._roi_rect is None:
+            return None
+        return tuple(self._roi_rect)
+
+    def _image_to_widget(self, ix: float, iy: float) -> QPointF:
+        """Convert image pixel coords to widget coords."""
+        vw, vh = float(self.width()), float(self.height())
+        iw, ih = float(self._img_width), float(self._img_height)
+
+        img_aspect = [iw / max(iw, ih), ih / max(iw, ih)]
+        vp_aspect = [vw / max(vw, vh), vh / max(vw, vh)]
+        sx = img_aspect[0] / vp_aspect[0]
+        sy = img_aspect[1] / vp_aspect[1]
+
+        # image (ix, iy) -> texcoord -> aPos
+        apos_x = (ix / iw) * 2.0 - 1.0
+        apos_y = 1.0 - (iy / ih) * 2.0
+
+        ndc_x = apos_x * sx * self._zoom + self._offset.x()
+        ndc_y = apos_y * sy * self._zoom + self._offset.y()
+
+        wx = (ndc_x + 1.0) / 2.0 * vw
+        wy = (1.0 - ndc_y) / 2.0 * vh
+        return QPointF(wx, wy)
+
+    def _widget_to_image(self, wx: float, wy: float) -> QPointF:
+        """Convert widget coords to image pixel coords."""
+        vw, vh = float(self.width()), float(self.height())
+        iw, ih = float(self._img_width), float(self._img_height)
+
+        img_aspect = [iw / max(iw, ih), ih / max(iw, ih)]
+        vp_aspect = [vw / max(vw, vh), vh / max(vw, vh)]
+        sx = img_aspect[0] / vp_aspect[0]
+        sy = img_aspect[1] / vp_aspect[1]
+
+        ndc_x = wx / vw * 2.0 - 1.0
+        ndc_y = 1.0 - wy / vh * 2.0
+
+        apos_x = (ndc_x - self._offset.x()) / (sx * self._zoom)
+        apos_y = (ndc_y - self._offset.y()) / (sy * self._zoom)
+
+        ix = (apos_x + 1.0) / 2.0 * iw
+        iy = (1.0 - apos_y) / 2.0 * ih
+        return QPointF(ix, iy)
 
     @property
     def zoom_factor(self) -> float:

@@ -8,6 +8,15 @@ from PySide6.QtWidgets import (
 from ..core.statistics import FrameStats
 from .i18n import tr, I18n
 
+_ROW_LABEL_STYLE = (
+    "QLabel { color: #8a8a8a; font-size: 12px; font-weight: 500; padding: 2px 0; }"
+)
+_VAL_LABEL_STYLE = (
+    "QLabel { color: #e0e0e0; font-size: 12px; font-family: 'Cascadia Mono', 'Consolas', monospace; "
+    "font-weight: 500; background: #252525; border: 1px solid #333333; border-radius: 3px; "
+    "padding: 3px 6px; }"
+)
+
 
 class StatisticsPanel(QWidget):
     """Panel displaying frame statistics."""
@@ -24,22 +33,36 @@ class StatisticsPanel(QWidget):
         self._group = QGroupBox()
         self._form = QFormLayout(self._group)
         self._form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        self._form.setVerticalSpacing(4)
+        self._form.setHorizontalSpacing(8)
 
-        self._min_label = QLabel("-")
-        self._max_label = QLabel("-")
-        self._mean_label = QLabel("-")
-        self._std_label = QLabel("-")
-        self._sharp_label = QLabel("-")
+        self._min_label = self._make_val("-")
+        self._max_label = self._make_val("-")
+        self._mean_label = self._make_val("-")
+        self._std_label = self._make_val("-")
+        self._sharp_label = self._make_val("-")
 
         self._row_labels = []
         for val_label in (self._min_label, self._max_label, self._mean_label,
                           self._std_label, self._sharp_label):
-            row_label = QLabel()
+            row_label = self._make_row()
             self._row_labels.append(row_label)
             self._form.addRow(row_label, val_label)
 
         layout.addWidget(self._group)
         self.retranslate()
+
+    @staticmethod
+    def _make_row() -> QLabel:
+        lbl = QLabel()
+        lbl.setStyleSheet(_ROW_LABEL_STYLE)
+        return lbl
+
+    @staticmethod
+    def _make_val(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(_VAL_LABEL_STYLE)
+        return lbl
 
     def retranslate(self) -> None:
         self._group.setTitle(tr("group_statistics"))

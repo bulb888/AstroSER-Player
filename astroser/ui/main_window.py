@@ -15,6 +15,14 @@ from PySide6.QtWidgets import (
 import time
 
 from ..core.ser_parser import SERFile, ColorID
+
+# Map Bayer ColorID to (red_col, red_row), (blue_col, blue_row) offsets in 2x2 block
+_BAYER_OFFSETS = {
+    ColorID.BAYER_RGGB: ((0.0, 0.0), (1.0, 1.0)),
+    ColorID.BAYER_GRBG: ((1.0, 0.0), (0.0, 1.0)),
+    ColorID.BAYER_GBRG: ((0.0, 1.0), (1.0, 0.0)),
+    ColorID.BAYER_BGGR: ((1.0, 1.0), (0.0, 0.0)),
+}
 from ..core.frame_pipeline import FramePipeline
 from ..core.playback_engine import PlaybackEngine
 from ..core.statistics import compute_stats
@@ -58,6 +66,7 @@ class MainWindow(QMainWindow):
 
         self._engine.frame_changed.connect(self._on_frame_changed)
         self._adjustments.adjustments_changed.connect(self._on_adjustments_changed)
+        self._transport.trim_save_requested.connect(self._on_trim_save)
 
         I18n.instance().language_changed.connect(self.retranslate)
         self.retranslate()
@@ -70,6 +79,15 @@ class MainWindow(QMainWindow):
         state = settings.value("windowState")
         if state:
             self.restoreState(state)
+
+        # Restore splitter proportions (ensure right panel is visible)
+        splitter_state = settings.value("splitterState")
+        if splitter_state:
+            self._splitter.restoreState(splitter_state)
+        else:
+            # Default: ~75% viewer, ~25% info panel
+            w = self.width()
+            self._splitter.setSizes([w * 3 // 4, w // 4])
 
     def _setup_ui(self) -> None:
         central = QWidget()
@@ -328,14 +346,23 @@ class MainWindow(QMainWindow):
             print(f"Frame {index} render error: {e}")
 
     def _on_frame_changed_gl(self, index: int, t0: float) -> None:
-        """GL path: upload raw frame to GPU, shader does adjustments."""
-        frame = self._pipeline.get_display_frame(index)
+        """GL path: upload raw frame to GPU, shader does adjustments + debayer."""
         color_id = self._ser_file.color_id
-        is_mono = not color_id.is_color and not color_id.is_bayer
         pixel_max = float((1 << self._ser_file.pixel_depth) - 1)
 
+        # For Bayer data, upload raw single-channel; GPU shader does debayer
+        if color_id.is_bayer and color_id in _BAYER_OFFSETS:
+            frame = self._pipeline.get_raw_frame(index)
+            is_mono = False
+            is_bayer = True
+            red_off, blue_off = _BAYER_OFFSETS[color_id]
+        else:
+            frame = self._pipeline.get_display_frame(index)
+            is_mono = not color_id.is_color and not color_id.is_bayer
+            is_bayer = False
+            red_off, blue_off = (0.0, 0.0), (1.0, 1.0)
+
         # GL normalizes textures by type max (255 for uint8, 65535 for uint16)
-        # We need a rescale factor so shader maps [0, pixel_max] -> [0, 1]
         type_max = 65535.0 if frame.dtype == np.uint16 else 255.0
         gl_rescale = type_max / pixel_max
 
@@ -359,6 +386,9 @@ class MainWindow(QMainWindow):
         viewer.gamma = self._pipeline.gamma
         viewer.auto_stretch = self._pipeline.auto_stretch
         viewer.solar_colorize = self._pipeline.solar_colorize
+        viewer.is_bayer = is_bayer
+        viewer.bayer_red_offset = red_off
+        viewer.bayer_blue_offset = blue_off
         viewer.set_frame(frame, is_mono, gl_rescale, auto_lo, auto_hi)
 
         self._update_stats(index, t0)
@@ -380,7 +410,7 @@ class MainWindow(QMainWindow):
 
             if budget_ok and self._stats_update_counter % 8 == 0:
                 self._pipeline.prefetch(index, direction=1, count=6)
-            if budget_ok and self._stats_update_counter % 30 == 0:
+            if budget_ok and self._stats_update_counter % 5 == 0:
                 raw = self._pipeline.get_raw_frame(index)
                 self._histogram.update_histogram(raw, subsample=True)
                 stats = compute_stats(raw, self._roi, fast=True)
@@ -419,20 +449,28 @@ class MainWindow(QMainWindow):
     def _add_roi(self) -> None:
         if self._ser_file is None:
             return
-        if self._use_gl:
-            # ROI not yet supported in GL mode
-            return
         w = min(200, self._ser_file.width // 2)
         h = min(200, self._ser_file.height // 2)
         x = (self._ser_file.width - w) // 2
         y = (self._ser_file.height - h) // 2
-        self._roi_item = ROISelector(x, y, w, h)
-        self._roi_item.set_change_callback(self._on_roi_changed)
-        self._viewer._scene.addItem(self._roi_item)
-        self._roi = self._roi_item.get_roi()
+        if self._use_gl:
+            self._viewer.set_roi(x, y, w, h)
+            self._viewer.roi_changed.connect(self._on_roi_changed)
+            self._roi = self._viewer.get_roi()
+        else:
+            self._roi_item = ROISelector(x, y, w, h)
+            self._roi_item.set_change_callback(self._on_roi_changed)
+            self._viewer._scene.addItem(self._roi_item)
+            self._roi = self._roi_item.get_roi()
 
     def _remove_roi(self) -> None:
-        if self._roi_item and not self._use_gl:
+        if self._use_gl:
+            self._viewer.clear_roi()
+            try:
+                self._viewer.roi_changed.disconnect(self._on_roi_changed)
+            except RuntimeError:
+                pass
+        elif self._roi_item:
             self._viewer._scene.removeItem(self._roi_item)
             self._roi_item = None
         self._roi = None
@@ -446,6 +484,30 @@ class MainWindow(QMainWindow):
             stats = compute_stats(raw, self._roi)
             self._statistics.update_stats(stats)
 
+    def _on_trim_save(self, start: int, end: int) -> None:
+        """Save trimmed SER file."""
+        if self._ser_file is None:
+            return
+
+        # Suggest a filename based on the original
+        src = self._ser_file.filepath
+        suggested = src.parent / f"{src.stem}_trim_{start + 1}-{end + 1}{src.suffix}"
+
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, tr("dlg_trim_save_title"), str(suggested), tr("dlg_filter"),
+        )
+        if not filepath:
+            return
+
+        try:
+            count = self._ser_file.save_trimmed(filepath, start, end)
+            QMessageBox.information(
+                self, tr("dlg_trim_save_title"),
+                tr("dlg_trim_success").format(count, filepath),
+            )
+        except Exception as e:
+            QMessageBox.critical(self, tr("dlg_error"), tr("dlg_trim_error").format(e))
+
     def _show_about(self) -> None:
         QMessageBox.about(self, tr("about_title"), tr("about_text"))
 
@@ -454,6 +516,7 @@ class MainWindow(QMainWindow):
         settings = QSettings("AstroSER", "Player")
         settings.setValue("geometry", self.saveGeometry())
         settings.setValue("windowState", self.saveState())
+        settings.setValue("splitterState", self._splitter.saveState())
         super().closeEvent(event)
 
     def dragEnterEvent(self, event) -> None:
