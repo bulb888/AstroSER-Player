@@ -2,7 +2,7 @@
 
 # AstroSER Player
 
-Cross-platform SER astronomical video player, designed for SER format videos captured by planetary cameras (ZWO ASI, etc.).
+Cross-platform SER astronomical video player, designed for SER format videos captured by planetary cameras (ZWO ASI, QHY, etc.).
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue)
 ![PySide6](https://img.shields.io/badge/UI-PySide6-green)
@@ -12,12 +12,15 @@ Cross-platform SER astronomical video player, designed for SER format videos cap
 ## Features
 
 - **Full SER format support** — MONO / Bayer (RGGB/GRBG/GBRG/BGGR) / RGB / BGR, 8–16 bit
+- **GPU Bayer demosaic** — Bayer decoding runs in GPU fragment shader, smooth playback for 1920×1080 16-bit RAW files
 - **OpenGL GPU accelerated rendering** — Brightness/contrast/gamma adjustments run entirely in GPU shaders; automatic CPU fallback when GPU is unavailable
+- **Visual trim timeline** — Draggable in/out handles with live frame preview while dragging, lossless SER export
 - **Solar false color** — H-alpha style warm toning for solar observation
 - **Real-time image adjustments** — Brightness, contrast, gamma sliders with auto histogram stretch
-- **Frame statistics & histogram** — Min/Max/Mean/Std/Sharpness with live histogram display
+- **Frame statistics & histogram** — Min/Max/Mean/Std/Sharpness with live histogram (RGB per-channel display)
 - **ROI selection** — Draggable rectangle region with independent statistics
 - **Smooth playback** — Frame skipping, LRU cache, background prefetch, adaptive time budget
+- **Modern dark UI** — Neutral dark gray theme, blue accent, monospace data labels, refined borders
 - **10 languages** — 中文, English, 日本語, 한국어, Français, Deutsch, Español, Português, Русский, العربية
 - **Drag & drop** — Drop `.ser` files directly to play
 
@@ -39,28 +42,29 @@ Cross-platform SER astronomical video player, designed for SER format videos cap
 
 ## Installation
 
-### Download Executable
-
-Go to the [Releases](https://github.com/bulb888/AstroSER-Player/releases) page and download `AstroSER Player.exe` — double-click to run (Windows 10/11).
+Go to the [Releases](https://github.com/bulb888/AstroSER-Player/releases) page and download `AstroSER Player.exe` — double-click to run (Windows 10/11, no installation required).
 
 ## Architecture
 
 ```
 astroser/
 ├── core/
-│   ├── ser_parser.py        # SER file parser (memmap frame access)
+│   ├── ser_parser.py        # SER file parser & lossless trim (memmap frame access)
 │   ├── frame_pipeline.py    # Frame pipeline (debayer → LUT → QImage)
-│   ├── debayer.py           # Bayer demosaicing (scipy / NumPy)
+│   ├── debayer.py           # CPU Bayer demosaicing (scipy / NumPy fallback)
 │   ├── playback_engine.py   # QTimer playback state machine
 │   └── statistics.py        # Frame statistics & sharpness
 ├── ui/
-│   ├── gl_viewer_widget.py  # OpenGL renderer (GLSL shaders)
+│   ├── gl_viewer_widget.py  # OpenGL renderer (GLSL shaders + GPU demosaic)
 │   ├── viewer_widget.py     # Software renderer (QGraphicsView)
 │   ├── main_window.py       # Main window
 │   ├── transport_bar.py     # Playback controls
+│   ├── trim_timeline.py     # Visual trim timeline
 │   ├── adjustments_panel.py # Image adjustment panel
-│   ├── histogram_widget.py  # Histogram
+│   ├── histogram_widget.py  # Histogram (gradient fill + RGB channels)
+│   ├── file_info_panel.py   # File info panel
 │   ├── statistics_panel.py  # Statistics display
+│   ├── theme.py             # Modern dark theme
 │   └── i18n.py              # Internationalization (10 languages)
 └── resources/icons/         # App icon
 ```
@@ -72,7 +76,7 @@ astroser/
 | PySide6 ≥ 6.5 | GUI framework |
 | NumPy ≥ 1.24 | Frame data processing |
 | SciPy ≥ 1.10 | Fast demosaicing convolution (optional, falls back to pure NumPy) |
-| PyOpenGL ≥ 3.1 | GPU rendering (optional, falls back to CPU software rendering) |
+| PyOpenGL ≥ 3.1 | GPU rendering & demosaicing (optional, falls back to CPU software rendering) |
 
 ## Author
 
