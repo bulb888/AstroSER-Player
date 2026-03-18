@@ -43,32 +43,6 @@ Cross-platform SER astronomical video player, designed for SER format videos cap
 
 Go to the [Releases](https://github.com/bulb888/AstroSER-Player/releases) page and download `AstroSER Player.exe` — double-click to run (Windows 10/11).
 
-### Run from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/bulb888/AstroSER-Player.git
-cd AstroSER-Player
-
-# Install dependencies
-pip install PySide6 numpy scipy PyOpenGL
-
-# Run
-python run.py
-```
-
-## Build
-
-```bash
-pip install pyinstaller
-pyinstaller --windowed --onefile --name "AstroSER Player" \
-    --icon astroser/resources/icons/app_icon.ico \
-    --add-data "astroser/resources/icons;astroser/resources/icons" \
-    --hidden-import OpenGL.platform.win32 \
-    --hidden-import OpenGL.GL \
-    run.py
-```
-
 ## Architecture
 
 ```

@@ -39,32 +39,6 @@
 
 前往 [Releases](https://github.com/bulb888/AstroSER-Player/releases) 页面下载 `AstroSER Player.exe`，双击即可运行（Windows 10/11）。
 
-### 从源码运行
-
-```bash
-# 克隆仓库
-git clone https://github.com/bulb888/AstroSER-Player.git
-cd AstroSER-Player
-
-# 安装依赖
-pip install PySide6 numpy scipy PyOpenGL
-
-# 运行
-python run.py
-```
-
-## 打包
-
-```bash
-pip install pyinstaller
-pyinstaller --windowed --onefile --name "AstroSER Player" \
-    --icon astroser/resources/icons/app_icon.ico \
-    --add-data "astroser/resources/icons;astroser/resources/icons" \
-    --hidden-import OpenGL.platform.win32 \
-    --hidden-import OpenGL.GL \
-    run.py
-```
-
 ## 技术架构
 
 ```
