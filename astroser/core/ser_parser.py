@@ -86,9 +86,9 @@ def _decode_string(raw: bytes) -> str:
     if null_pos >= 0:
         raw = raw[:null_pos]
     try:
-        return raw.decode('utf-8')
+        return raw.decode('utf-8').strip()
     except UnicodeDecodeError:
-        return raw.decode('latin-1')
+        return raw.decode('latin-1').strip()
 
 
 class SERFile:
@@ -187,17 +187,15 @@ class SERFile:
         if self._frame_count <= 0:
             raise ValueError(f"Invalid frame count: {self._frame_count}")
 
-        expected_data = self._frame_count * self.frame_size_bytes
         available = file_size - TOTAL_HEADER_SIZE
-        if available < expected_data:
-            actual_frames = available // self.frame_size_bytes
-            if actual_frames > 0:
-                self._frame_count = actual_frames
-            else:
-                raise ValueError(
-                    f"File too small: need {expected_data} bytes for "
-                    f"{self._frame_count} frames, have {available}"
-                )
+        actual_frames = available // self.frame_size_bytes
+        if actual_frames <= 0:
+            raise ValueError(
+                f"File too small: need {self.frame_size_bytes} bytes per frame, "
+                f"have {available}"
+            )
+        if actual_frames != self._frame_count:
+            self._frame_count = actual_frames
 
     def _setup_memmap(self) -> None:
         """Create memory-mapped array for frame data."""
@@ -350,9 +348,62 @@ class SERFile:
             "instrument": self._instrument,
             "telescope": self._telescope,
             "datetime_local": self._datetime_local.strftime("%Y-%m-%d %H:%M:%S") if self._datetime_local else "",
-            "datetime_utc": self._datetime_utc.strftime("%Y-%m-%d %H:%M:%S UTC") if self._datetime_utc else "",
+            "datetime_utc": self._datetime_utc.strftime("%Y-%m-%d %H:%M:%S") if self._datetime_utc else "",
             "has_timestamps": self.has_timestamps,
         }
+
+    def save_trimmed(self, output_path: str | Path, start: int, end: int) -> int:
+        """Save a range of frames [start, end] to a new SER file (lossless).
+
+        Copies the header (with updated frame count), raw frame data byte-for-byte,
+        and the corresponding timestamps if present.
+
+        Returns the number of frames written.
+        """
+        if self._mmap is None:
+            raise RuntimeError("SER file is not open")
+        if not (0 <= start <= end < self._frame_count):
+            raise ValueError(
+                f"Invalid range [{start}, {end}] for {self._frame_count} frames"
+            )
+
+        new_count = end - start + 1
+        output_path = Path(output_path)
+
+        with open(self._filepath, "rb") as src:
+            header_data = bytearray(src.read(TOTAL_HEADER_SIZE))
+
+        # Patch frame count in header (offset 14 + 4*3 = 26, 4 bytes little-endian)
+        frame_count_offset = FILE_ID_SIZE + 6 * 4  # after FileID + LuID + ColorID + LE + W + H + PixelDepth
+        # Actually: FileID(14) + LuID(4) + ColorID(4) + LE(4) + W(4) + H(4) + PixelDepth(4) = 38
+        # FrameCount is at offset 38
+        frame_count_offset = FILE_ID_SIZE + 6 * 4  # 14 + 24 = 38
+        struct.pack_into("<i", header_data, frame_count_offset, new_count)
+
+        with open(output_path, "wb") as out:
+            # Write header
+            out.write(header_data)
+
+            # Write frame data byte-for-byte (lossless)
+            frame_bytes = self.frame_size_bytes
+            with open(self._filepath, "rb") as src:
+                src.seek(TOTAL_HEADER_SIZE + start * frame_bytes)
+                remaining = new_count * frame_bytes
+                chunk_size = 1024 * 1024  # 1 MB chunks
+                while remaining > 0:
+                    to_read = min(chunk_size, remaining)
+                    data = src.read(to_read)
+                    if not data:
+                        break
+                    out.write(data)
+                    remaining -= len(data)
+
+            # Write timestamps for the trimmed range if present
+            if self._timestamps is not None:
+                trimmed_ts = np.array(self._timestamps[start:end + 1], dtype=np.int64)
+                out.write(trimmed_ts.tobytes())
+
+        return new_count
 
     def __repr__(self) -> str:
         return (
