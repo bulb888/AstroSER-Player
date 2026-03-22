@@ -9,7 +9,9 @@ from PySide6.QtCore import Qt, QSettings
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QMainWindow, QFileDialog, QMessageBox, QVBoxLayout, QWidget,
-    QSplitter, QStatusBar, QLabel, QScrollArea,
+    QSplitter, QStatusBar, QLabel, QScrollArea, QProgressDialog,
+    QDialog, QFormLayout, QSpinBox, QSlider, QDialogButtonBox,
+    QCheckBox, QHBoxLayout, QTabWidget,
 )
 
 import time
@@ -40,6 +42,10 @@ from .adjustments_panel import AdjustmentsPanel
 from .histogram_widget import HistogramWidget
 from .statistics_panel import StatisticsPanel
 from .roi_selector import ROISelector
+from .timestamp_panel import TimestampPanel
+from .tracking_panel import TrackingPanel
+from .lucky_panel import LuckyPanel
+from .mount_panel import MountPanel
 from .i18n import tr, I18n, LANGUAGES
 
 
@@ -109,6 +115,7 @@ class MainWindow(QMainWindow):
         right_layout.setContentsMargins(0, 0, 0, 0)
         right_layout.setSpacing(2)
 
+        # ── Core panels (always visible) ──
         self._file_info = FileInfoPanel()
         right_layout.addWidget(self._file_info)
 
@@ -121,6 +128,27 @@ class MainWindow(QMainWindow):
         self._statistics = StatisticsPanel()
         right_layout.addWidget(self._statistics)
 
+        # ── Analysis tabs (shown when activated) ──
+        self._analysis_tabs = QTabWidget()
+        self._analysis_tabs.setDocumentMode(True)
+        self._analysis_tabs.setTabPosition(QTabWidget.TabPosition.North)
+        self._analysis_tabs.setStyleSheet(
+            "QTabWidget::pane { border: none; background: transparent; }"
+            "QTabBar::tab { font-size: 11px; padding: 4px 10px; }"
+        )
+        self._analysis_tabs.setVisible(False)
+
+        self._timestamp_panel = TimestampPanel()
+        self._timestamp_panel.frame_selected.connect(self._engine.seek)
+
+        self._tracking_panel = TrackingPanel()
+        self._tracking_panel.frame_selected.connect(self._engine.seek)
+
+        self._mount_panel = MountPanel()
+
+        self._lucky_panel = LuckyPanel()
+
+        right_layout.addWidget(self._analysis_tabs)
         right_layout.addStretch()
 
         scroll = QScrollArea()
@@ -148,6 +176,12 @@ class MainWindow(QMainWindow):
         self._open_action.setShortcut(QKeySequence.StandardKey.Open)
         self._open_action.triggered.connect(self._open_file_dialog)
         self._file_menu.addAction(self._open_action)
+        self._file_menu.addSeparator()
+        self._export_mp4_action = QAction("", self)
+        self._export_mp4_action.setShortcut(QKeySequence("Ctrl+E"))
+        self._export_mp4_action.triggered.connect(self._export_mp4)
+        self._export_mp4_action.setEnabled(False)
+        self._file_menu.addAction(self._export_mp4_action)
         self._file_menu.addSeparator()
         self._exit_action = QAction("", self)
         self._exit_action.setShortcut(QKeySequence("Ctrl+Q"))
@@ -196,6 +230,24 @@ class MainWindow(QMainWindow):
         self._solar_action.setCheckable(True)
         self._solar_action.toggled.connect(self._toggle_solar)
         self._tools_menu.addAction(self._solar_action)
+
+        # Analysis menu
+        self._analysis_menu = menubar.addMenu("")
+        self._timestamp_action = QAction("", self)
+        self._timestamp_action.setCheckable(True)
+        self._timestamp_action.toggled.connect(self._toggle_timestamp_panel)
+        self._analysis_menu.addAction(self._timestamp_action)
+
+        self._load_tracking_action = QAction("", self)
+        self._load_tracking_action.triggered.connect(self._load_tracking_log)
+        self._analysis_menu.addAction(self._load_tracking_action)
+
+        self._analysis_menu.addSeparator()
+
+        self._lucky_action = QAction("", self)
+        self._lucky_action.setCheckable(True)
+        self._lucky_action.toggled.connect(self._toggle_lucky_panel)
+        self._analysis_menu.addAction(self._lucky_action)
 
         # Language menu
         self._lang_menu = menubar.addMenu("")
@@ -250,6 +302,7 @@ class MainWindow(QMainWindow):
 
         self._file_menu.setTitle(tr("menu_file"))
         self._open_action.setText(tr("menu_open"))
+        self._export_mp4_action.setText(tr("menu_export_mp4"))
         self._exit_action.setText(tr("menu_exit"))
 
         self._view_menu.setTitle(tr("menu_view"))
@@ -262,6 +315,23 @@ class MainWindow(QMainWindow):
         self._tools_menu.setTitle(tr("menu_tools"))
         self._roi_action.setText(tr("menu_roi"))
         self._solar_action.setText(tr("menu_solar"))
+
+        self._analysis_menu.setTitle(tr("menu_analysis"))
+        self._timestamp_action.setText(tr("menu_timestamp_panel"))
+        self._load_tracking_action.setText(tr("menu_load_tracking"))
+        self._lucky_action.setText(tr("menu_lucky_export"))
+
+        # Update analysis tab titles
+        _tab_map = {
+            self._timestamp_panel: tr("tab_timestamp"),
+            self._tracking_panel: tr("tab_tracking"),
+            self._mount_panel: tr("tab_mount"),
+            self._lucky_panel: tr("tab_lucky"),
+        }
+        for i in range(self._analysis_tabs.count()):
+            w = self._analysis_tabs.widget(i)
+            if w in _tab_map:
+                self._analysis_tabs.setTabText(i, _tab_map[w])
 
         self._lang_menu.setTitle(tr("menu_language"))
         self._help_menu.setTitle(tr("menu_help"))
@@ -302,6 +372,7 @@ class MainWindow(QMainWindow):
         self._engine.set_frame_count(ser.frame_count)
         self._transport.set_frame_count(ser.frame_count)
         self._transport.setEnabled(True)
+        self._export_mp4_action.setEnabled(True)
 
         self._file_info.update_info(ser)
 
@@ -312,6 +383,14 @@ class MainWindow(QMainWindow):
             f"{ser.pixel_depth}bit | "
             f"{tr('status_frames').format(ser.frame_count)}"
         )
+
+        # Set UTC callback for timeline tooltip
+        if ser.has_timestamps:
+            self._transport._timeline.set_utc_callback(
+                lambda idx: ser.get_timestamp(idx)
+            )
+        else:
+            self._transport._timeline.set_utc_callback(None)
 
         self._viewer.reset_view()
         self._engine.seek(0)
@@ -327,9 +406,20 @@ class MainWindow(QMainWindow):
             self._ser_file = None
         self._pipeline = None
         self._transport.setEnabled(False)
+        self._export_mp4_action.setEnabled(False)
         self._file_info.clear()
         self._histogram.clear()
         self._statistics.clear()
+        self._analysis_tabs.clear()
+        self._analysis_tabs.setVisible(False)
+        self._timestamp_panel.clear()
+        self._tracking_panel.clear()
+        self._lucky_panel.clear()
+        self._mount_panel.clear()
+        if self._timestamp_action.isChecked():
+            self._timestamp_action.setChecked(False)
+        if self._lucky_action.isChecked():
+            self._lucky_action.setChecked(False)
 
     def _on_frame_changed(self, index: int) -> None:
         if self._pipeline is None:
@@ -341,6 +431,10 @@ class MainWindow(QMainWindow):
                 self._on_frame_changed_gl(index, t0)
             else:
                 self._on_frame_changed_sw(index, t0)
+
+            # Update tracking OSD if visible
+            if self._analysis_tabs.indexOf(self._tracking_panel) >= 0:
+                self._tracking_panel.update_frame(index)
 
         except Exception as e:
             print(f"Frame {index} render error: {e}")
@@ -508,6 +602,236 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, tr("dlg_error"), tr("dlg_trim_error").format(e))
 
+    # --- Analysis features ---
+
+    def _add_analysis_tab(self, widget: QWidget, title: str) -> None:
+        """Add a tab to analysis tabs if not already present."""
+        for i in range(self._analysis_tabs.count()):
+            if self._analysis_tabs.widget(i) is widget:
+                self._analysis_tabs.setCurrentIndex(i)
+                return
+        self._analysis_tabs.addTab(widget, title)
+        self._analysis_tabs.setCurrentWidget(widget)
+        self._analysis_tabs.setVisible(True)
+
+    def _remove_analysis_tab(self, widget: QWidget) -> None:
+        """Remove a tab from analysis tabs."""
+        idx = self._analysis_tabs.indexOf(widget)
+        if idx >= 0:
+            self._analysis_tabs.removeTab(idx)
+        if self._analysis_tabs.count() == 0:
+            self._analysis_tabs.setVisible(False)
+
+    def _toggle_timestamp_panel(self, checked: bool) -> None:
+        if checked and self._ser_file and self._ser_file.has_timestamps:
+            self._timestamp_panel.set_timestamps(self._ser_file._timestamps)
+            self._add_analysis_tab(self._timestamp_panel, tr("tab_timestamp"))
+        elif checked and self._ser_file and not self._ser_file.has_timestamps:
+            QMessageBox.information(self, tr("group_timestamp"), tr("ts_no_timestamps"))
+            self._timestamp_action.setChecked(False)
+        elif not checked:
+            self._remove_analysis_tab(self._timestamp_panel)
+
+    def _load_tracking_log(self) -> None:
+        if self._ser_file is None:
+            return
+
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, tr("menu_load_tracking"), "", "Log Files (*.log);;All Files (*)",
+        )
+        if not filepath:
+            return
+        self._load_tracking_log_file(filepath)
+
+    def _toggle_lucky_panel(self, checked: bool) -> None:
+        if checked and self._ser_file:
+            self._lucky_panel.set_ser_file(self._ser_file)
+            self._add_analysis_tab(self._lucky_panel, tr("tab_lucky"))
+        elif not checked:
+            self._remove_analysis_tab(self._lucky_panel)
+
+    def _export_mp4(self) -> None:
+        """Export current SER file to MP4."""
+        if self._ser_file is None or self._pipeline is None:
+            return
+
+        has_roi = self._roi is not None
+        has_tracking = bool(self._analysis_tabs.indexOf(self._tracking_panel) >= 0
+                            and hasattr(self._tracking_panel, '_matched')
+                            and self._tracking_panel._matched)
+
+        # Build options dialog
+        dlg = QDialog(self)
+        dlg.setWindowTitle(tr("dlg_export_mp4_title"))
+        dlg.setMinimumWidth(360)
+        layout = QVBoxLayout(dlg)
+        form = QFormLayout()
+
+        # FPS
+        fps_spin = QSpinBox()
+        fps_spin.setRange(1, 120)
+        default_fps = 25
+        if self._ser_file.has_timestamps and len(self._ser_file._timestamps) > 1:
+            deltas = np.diff(self._ser_file._timestamps.astype(np.int64)) / 10_000.0
+            avg_ms = float(np.mean(deltas))
+            if avg_ms > 0:
+                default_fps = min(120, max(1, round(1000.0 / avg_ms)))
+        fps_spin.setValue(default_fps)
+        form.addRow(tr("mp4_fps_label"), fps_spin)
+
+        # Quality (CRF)
+        quality_layout = QHBoxLayout()
+        quality_slider = QSlider(Qt.Orientation.Horizontal)
+        quality_slider.setRange(15, 35)
+        quality_slider.setValue(23)
+        quality_label = QLabel("23")
+        quality_slider.valueChanged.connect(lambda v: quality_label.setText(str(v)))
+        quality_layout.addWidget(quality_slider)
+        quality_layout.addWidget(quality_label)
+        form.addRow(tr("mp4_quality_label"), quality_layout)
+
+        # Trim range checkbox
+        trim_check = QCheckBox(tr("mp4_use_trim"))
+        trim_active = self._transport._timeline.trim_active
+        trim_check.setChecked(trim_active)
+        trim_check.setEnabled(trim_active)
+        form.addRow("", trim_check)
+
+        # Crop to ROI checkbox (always available — without ROI uses custom size centered)
+        crop_check = QCheckBox(tr("mp4_crop_roi"))
+        crop_check.setChecked(False)
+        form.addRow("", crop_check)
+
+        # Auto-center checkbox
+        center_check = QCheckBox(tr("mp4_crop_center"))
+        center_check.setChecked(False)
+        center_check.setEnabled(bool(has_roi and has_tracking))
+        form.addRow("", center_check)
+
+        # Crop size (for when no ROI but user wants manual crop size with auto-center)
+        crop_w_spin = QSpinBox()
+        crop_w_spin.setRange(64, self._ser_file.width)
+        crop_h_spin = QSpinBox()
+        crop_h_spin.setRange(64, self._ser_file.height)
+        if has_roi:
+            crop_w_spin.setValue(self._roi[2])
+            crop_h_spin.setValue(self._roi[3])
+        else:
+            crop_w_spin.setValue(min(640, self._ser_file.width))
+            crop_h_spin.setValue(min(480, self._ser_file.height))
+        size_layout = QHBoxLayout()
+        size_layout.addWidget(crop_w_spin)
+        size_layout.addWidget(QLabel("×"))
+        size_layout.addWidget(crop_h_spin)
+        form.addRow(tr("mp4_crop_size"), size_layout)
+
+        # Show/hide crop size based on crop checkbox
+        def _update_crop_ui():
+            use_crop = crop_check.isChecked()
+            center_check.setEnabled(bool(use_crop and has_tracking))
+            crop_w_spin.setEnabled(use_crop)
+            crop_h_spin.setEnabled(use_crop)
+            if not use_crop:
+                center_check.setChecked(False)
+
+        crop_check.toggled.connect(_update_crop_ui)
+        _update_crop_ui()
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        fps = fps_spin.value()
+        quality = quality_slider.value()
+
+        # Frame range
+        if trim_check.isChecked():
+            start = self._transport._timeline.trim_in
+            end = self._transport._timeline.trim_out
+        else:
+            start = 0
+            end = self._ser_file.frame_count - 1
+
+        # Crop ROI
+        crop_roi = None
+        if crop_check.isChecked():
+            cw, ch = crop_w_spin.value(), crop_h_spin.value()
+            if has_roi:
+                cx, cy = self._roi[0], self._roi[1]
+            else:
+                cx = (self._ser_file.width - cw) // 2
+                cy = (self._ser_file.height - ch) // 2
+            crop_roi = (cx, cy, cw, ch)
+
+        # Tracking offsets for auto-centering
+        tracking_offsets = None
+        if center_check.isChecked() and has_tracking:
+            matched = self._tracking_panel._matched
+            tracking_offsets = []
+            for entry in matched:
+                if entry is not None:
+                    tracking_offsets.append((entry.err_dx, entry.err_dy))
+                else:
+                    tracking_offsets.append(None)
+
+        # Output path
+        src = self._ser_file.filepath
+        suggested = src.parent / f"{src.stem}.mp4"
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, tr("dlg_export_mp4_title"), str(suggested), tr("dlg_mp4_filter"),
+        )
+        if not filepath:
+            return
+
+        total = end - start + 1
+
+        # Progress dialog
+        progress = QProgressDialog(tr("mp4_exporting"), tr("menu_exit"), 0, total, self)
+        progress.setWindowTitle(tr("dlg_export_mp4_title"))
+        progress.setWindowModality(Qt.WindowModality.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+
+        cancelled = [False]
+
+        def on_progress(current, total_frames):
+            progress.setValue(current)
+            if progress.wasCanceled():
+                cancelled[0] = True
+                return False
+            from PySide6.QtWidgets import QApplication
+            QApplication.processEvents()
+            return True
+
+        try:
+            from ..core.mp4_export import export_mp4
+            count = export_mp4(
+                self._ser_file, self._pipeline,
+                filepath, start, end, fps, quality,
+                crop_roi=crop_roi,
+                tracking_offsets=tracking_offsets,
+                progress_cb=on_progress,
+            )
+            progress.close()
+
+            if not cancelled[0]:
+                QMessageBox.information(
+                    self, tr("dlg_export_mp4_title"),
+                    tr("mp4_success").format(count, filepath),
+                )
+        except Exception as e:
+            progress.close()
+            QMessageBox.critical(
+                self, tr("dlg_export_mp4_title"),
+                tr("mp4_error").format(str(e)),
+            )
+
     def _show_about(self) -> None:
         QMessageBox.about(self, tr("about_title"), tr("about_text"))
 
@@ -522,7 +846,8 @@ class MainWindow(QMainWindow):
     def dragEnterEvent(self, event) -> None:
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
-                if url.toLocalFile().lower().endswith('.ser'):
+                lf = url.toLocalFile().lower()
+                if lf.endswith('.ser') or lf.endswith('.log'):
                     event.acceptProposedAction()
                     return
 
@@ -532,3 +857,44 @@ class MainWindow(QMainWindow):
             if filepath.lower().endswith('.ser'):
                 self.open_file(filepath)
                 break
+            elif filepath.lower().endswith('.log') and self._ser_file:
+                self._load_tracking_log_file(filepath)
+                break
+
+    def _load_tracking_log_file(self, filepath: str) -> None:
+        """Load a tracking log file by path."""
+        from ..core.tracking_log import parse_tracking_log, match_log_to_frames
+        from ..core.timestamp_analysis import get_utc_times
+        from ..core.delay_analysis import compute_delay, compute_mount_response
+
+        ref_date = self._ser_file.datetime_utc or self._ser_file.datetime_local
+        log = parse_tracking_log(Path(filepath), ref_date)
+
+        if not log.entries:
+            return
+
+        if self._ser_file.has_timestamps:
+            frame_utcs = get_utc_times(self._ser_file._timestamps)
+        else:
+            frame_utcs = [None] * self._ser_file.frame_count
+
+        matched = match_log_to_frames(log, frame_utcs)
+        self._tracking_panel.set_data(log, matched)
+        self._add_analysis_tab(self._tracking_panel, tr("tab_tracking"))
+        self._tracking_panel.update_frame(self._engine.current_frame)
+
+        # Compute delay and mount response
+        avg_interval_ms = 33.0
+        if self._ser_file.has_timestamps and len(self._ser_file._timestamps) > 1:
+            deltas = np.diff(self._ser_file._timestamps.astype(np.int64)) / 10_000.0
+            avg_interval_ms = float(np.mean(deltas))
+
+        delay_stats = compute_delay(log.entries, avg_interval_ms)
+        mount_resp = compute_mount_response(log)
+
+        if delay_stats or mount_resp:
+            if delay_stats:
+                self._mount_panel.set_delay(delay_stats)
+            if mount_resp:
+                self._mount_panel.set_response(mount_resp)
+            self._add_analysis_tab(self._mount_panel, tr("tab_mount"))

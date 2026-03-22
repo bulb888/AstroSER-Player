@@ -1,8 +1,11 @@
 """Clean trim timeline with playhead and draggable in/out handles."""
 
+from datetime import datetime
+from typing import Optional, Callable
+
 from PySide6.QtCore import Qt, Signal, QRectF, QPointF
 from PySide6.QtGui import QPainter, QColor, QPen, QBrush, QFont, QMouseEvent, QPainterPath
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget, QToolTip
 
 _HANDLE_HIT = 14
 
@@ -29,10 +32,15 @@ class TrimTimeline(QWidget):
         self._trim_out = 0
         self._trim_active = False
         self._dragging = None
+        self._utc_callback: Optional[Callable[[int], Optional[datetime]]] = None
         self.setMinimumHeight(32)
         self.setMaximumHeight(32)
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def set_utc_callback(self, callback: Optional[Callable[[int], Optional[datetime]]]):
+        """Set callback to get UTC time for a frame index: fn(frame_idx) -> datetime or None."""
+        self._utc_callback = callback
 
     def set_frame_count(self, count):
         self._frame_count = max(0, count)
@@ -97,6 +105,15 @@ class TrimTimeline(QWidget):
         else:
             h = self._hit(e.position())
             self.setCursor(Qt.CursorShape.SizeHorCursor if h in ('in','out') else Qt.CursorShape.PointingHandCursor)
+            # UTC tooltip
+            if self._utc_callback and self._frame_count > 0:
+                f = self._x2f(e.position().x())
+                utc = self._utc_callback(f)
+                if utc:
+                    tip = f"#{f+1}  {utc.strftime('%H:%M:%S.%f')[:-3]} UTC"
+                    QToolTip.showText(e.globalPosition().toPoint(), tip, self)
+                else:
+                    QToolTip.hideText()
 
     def mouseReleaseEvent(self, e):
         self._dragging = None

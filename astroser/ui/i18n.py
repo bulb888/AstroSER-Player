@@ -858,6 +858,243 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ar": "يرجى تعيين نقاط البداية/النهاية أولاً",
     },
 
+    # --- Analysis tabs ---
+    "tab_timestamp": {
+        "zh": "时间戳", "en": "Timestamps", "ru": "Метки", "ja": "タイムスタンプ",
+        "fr": "Horodatage", "de": "Zeitstempel", "es": "Tiempos", "pt": "Carimbos",
+        "ko": "타임스탬프", "ar": "الطوابع",
+    },
+    "tab_tracking": {
+        "zh": "跟踪", "en": "Tracking", "ru": "Трекинг", "ja": "追尾",
+        "fr": "Suivi", "de": "Tracking", "es": "Seguimiento", "pt": "Rastreamento",
+        "ko": "추적", "ar": "التتبع",
+    },
+    "tab_mount": {
+        "zh": "赤道仪", "en": "Mount", "ru": "Монтировка", "ja": "架台",
+        "fr": "Monture", "de": "Montierung", "es": "Montura", "pt": "Montagem",
+        "ko": "마운트", "ar": "الحامل",
+    },
+    "tab_lucky": {
+        "zh": "Lucky", "en": "Lucky", "ru": "Lucky", "ja": "Lucky",
+        "fr": "Lucky", "de": "Lucky", "es": "Lucky", "pt": "Lucky",
+        "ko": "Lucky", "ar": "Lucky",
+    },
+
+    # --- Analysis menu ---
+    "menu_analysis": {
+        "zh": "分析(&A)", "en": "&Analysis", "ru": "&Анализ", "ja": "分析(&A)",
+        "fr": "&Analyse", "de": "&Analyse", "es": "&Análisis", "pt": "&Análise",
+        "ko": "분석(&A)", "ar": "&تحليل",
+    },
+    "menu_timestamp_panel": {
+        "zh": "时间戳质量分析(&T)", "en": "&Timestamp Analysis",
+        "ru": "Анализ &временных меток", "ja": "タイムスタンプ分析(&T)",
+        "fr": "Analyse des &horodatages", "de": "&Zeitstempel-Analyse",
+        "es": "Análisis de marcas de &tiempo", "pt": "Análise de &carimbos",
+        "ko": "타임스탬프 분석(&T)", "ar": "تحليل &الطوابع الزمنية",
+    },
+    "menu_load_tracking": {
+        "zh": "加载 tracking.log(&L)...", "en": "&Load tracking.log...",
+        "ru": "Загрузить &tracking.log...", "ja": "tracking.log 読み込み(&L)...",
+        "fr": "Charger &tracking.log...", "de": "tracking.log &laden...",
+        "es": "Cargar &tracking.log...", "pt": "Carregar &tracking.log...",
+        "ko": "tracking.log 불러오기(&L)...", "ar": "تحميل &tracking.log...",
+    },
+    "menu_lucky_export": {
+        "zh": "Lucky选帧导出(&K)...", "en": "Luc&ky Frame Export...",
+        "ru": "Lucky-экспорт &кадров...", "ja": "Lucky選別エクスポート(&K)...",
+        "fr": "Export Lucky &frames...", "de": "Lucky-&Frame-Export...",
+        "es": "Exportar cuadros Luc&ky...", "pt": "Exportar quadros Luc&ky...",
+        "ko": "Lucky 프레임 내보내기(&K)...", "ar": "تصدير إطارات Luc&ky...",
+    },
+
+    # --- Timestamp panel ---
+    "group_timestamp": {
+        "zh": "时间戳分析", "en": "Timestamp Analysis",
+        "ru": "Анализ меток", "ja": "タイムスタンプ分析",
+        "fr": "Analyse horodatage", "de": "Zeitstempel-Analyse",
+        "es": "Análisis temporal", "pt": "Análise temporal",
+        "ko": "타임스탬프 분석", "ar": "تحليل الطوابع",
+    },
+    "ts_fps": {
+        "zh": "平均帧率:", "en": "Avg FPS:", "ru": "Ср. FPS:", "ja": "平均FPS:",
+        "fr": "FPS moy.:", "de": "Mittl. FPS:", "es": "FPS prom.:", "pt": "FPS méd.:",
+        "ko": "평균 FPS:", "ar": "متوسط FPS:",
+    },
+    "ts_avg_delta": {
+        "zh": "平均间隔:", "en": "Avg Delta:", "ru": "Ср. дельта:", "ja": "平均Δ:",
+        "fr": "Delta moy.:", "de": "Mittl. Delta:", "es": "Delta prom.:", "pt": "Delta méd.:",
+        "ko": "평균 델타:", "ar": "متوسط Δ:",
+    },
+    "ts_minmax": {
+        "zh": "最小/最大:", "en": "Min / Max:", "ru": "Мин / Макс:", "ja": "最小/最大:",
+        "fr": "Min / Max:", "de": "Min / Max:", "es": "Mín / Máx:", "pt": "Mín / Máx:",
+        "ko": "최소/최대:", "ar": "أدنى/أقصى:",
+    },
+    "ts_std": {
+        "zh": "标准差:", "en": "Std Dev:", "ru": "Ст.откл.:", "ja": "標準偏差:",
+        "fr": "Écart type:", "de": "Std.abw.:", "es": "Desv. est.:", "pt": "Desvio pad.:",
+        "ko": "표준편차:", "ar": "الانحراف:",
+    },
+    "ts_zero": {
+        "zh": "Δ=0 帧:", "en": "Δ=0 Frames:", "ru": "Δ=0 кадров:", "ja": "Δ=0 フレーム:",
+        "fr": "Δ=0 images:", "de": "Δ=0 Bilder:", "es": "Δ=0 cuadros:", "pt": "Δ=0 quadros:",
+        "ko": "Δ=0 프레임:", "ar": "إطارات Δ=0:",
+    },
+    "ts_anomaly": {
+        "zh": "异常帧:", "en": "Anomalies:", "ru": "Аномалии:", "ja": "異常:",
+        "fr": "Anomalies:", "de": "Anomalien:", "es": "Anomalías:", "pt": "Anomalias:",
+        "ko": "이상치:", "ar": "شذوذ:",
+    },
+    "ts_duration": {
+        "zh": "持续时间:", "en": "Duration:", "ru": "Длительн.:", "ja": "長さ:",
+        "fr": "Durée:", "de": "Dauer:", "es": "Duración:", "pt": "Duração:",
+        "ko": "지속시간:", "ar": "المدة:",
+    },
+    "btn_export_csv": {
+        "zh": "导出 CSV", "en": "Export CSV", "ru": "Экспорт CSV", "ja": "CSV出力",
+        "fr": "Exporter CSV", "de": "CSV Export", "es": "Exportar CSV", "pt": "Exportar CSV",
+        "ko": "CSV 내보내기", "ar": "تصدير CSV",
+    },
+    "dlg_export_csv": {
+        "zh": "导出时间戳报告", "en": "Export Timestamp Report",
+        "ru": "Экспорт отчёта меток", "ja": "タイムスタンプレポート出力",
+        "fr": "Exporter rapport horodatage", "de": "Zeitstempel-Bericht exportieren",
+        "es": "Exportar informe temporal", "pt": "Exportar relatório temporal",
+        "ko": "타임스탬프 보고서 내보내기", "ar": "تصدير تقرير الطوابع",
+    },
+    "ts_no_timestamps": {
+        "zh": "此 SER 文件没有时间戳", "en": "This SER file has no timestamps",
+        "ru": "В этом SER-файле нет меток", "ja": "このSERファイルにタイムスタンプなし",
+        "fr": "Ce fichier SER n'a pas d'horodatage", "de": "Diese SER-Datei hat keine Zeitstempel",
+        "es": "Este archivo SER no tiene marcas", "pt": "Este arquivo SER não tem carimbos",
+        "ko": "이 SER 파일에 타임스탬프 없음", "ar": "لا توجد طوابع زمنية في هذا الملف",
+    },
+
+    # --- Lucky imaging ---
+    "group_lucky": {
+        "zh": "Lucky 选帧", "en": "Lucky Imaging",
+        "ru": "Lucky-кадры", "ja": "Lucky選別",
+        "fr": "Lucky Imaging", "de": "Lucky Imaging",
+        "es": "Lucky Imaging", "pt": "Lucky Imaging",
+        "ko": "Lucky 이미징", "ar": "Lucky Imaging",
+    },
+    "lucky_top_pct": {
+        "zh": "保留前 {0}% ({1} 帧)", "en": "Keep top {0}% ({1} frames)",
+        "ru": "Лучшие {0}% ({1} кадров)", "ja": "上位{0}%({1}フレーム)",
+        "fr": "Garder top {0}% ({1} images)", "de": "Top {0}% behalten ({1} Bilder)",
+        "es": "Mantener top {0}% ({1} cuadros)", "pt": "Manter top {0}% ({1} quadros)",
+        "ko": "상위 {0}% 유지 ({1}프레임)", "ar": "الاحتفاظ بأفضل {0}% ({1} إطار)",
+    },
+    "btn_lucky_export": {
+        "zh": "导出选帧 SER", "en": "Export Selected SER",
+        "ru": "Экспорт выбранных кадров", "ja": "選別フレーム出力",
+        "fr": "Exporter SER sélectionné", "de": "Ausgewählte SER exportieren",
+        "es": "Exportar SER seleccionado", "pt": "Exportar SER selecionado",
+        "ko": "선택 프레임 SER 내보내기", "ar": "تصدير الإطارات المختارة",
+    },
+    "dlg_lucky_export": {
+        "zh": "导出 Lucky 选帧", "en": "Export Lucky Frames",
+        "ru": "Экспорт Lucky-кадров", "ja": "Lucky選別エクスポート",
+        "fr": "Exporter Lucky frames", "de": "Lucky-Frames exportieren",
+        "es": "Exportar Lucky frames", "pt": "Exportar Lucky frames",
+        "ko": "Lucky 프레임 내보내기", "ar": "تصدير إطارات Lucky",
+    },
+    "dlg_lucky_success": {
+        "zh": "Lucky 选帧完成！\n已导出 {0} 帧到:\n{1}", "en": "Lucky export complete!\nExported {0} frames to:\n{1}",
+        "ru": "Lucky-экспорт завершён!\nЭкспортировано {0} кадров:\n{1}", "ja": "Lucky出力完了！\n{0}フレーム出力:\n{1}",
+        "fr": "Export Lucky terminé!\n{0} images exportées:\n{1}", "de": "Lucky-Export abgeschlossen!\n{0} Bilder exportiert:\n{1}",
+        "es": "¡Export Lucky completado!\n{0} cuadros exportados:\n{1}", "pt": "Exportação Lucky concluída!\n{0} quadros exportados:\n{1}",
+        "ko": "Lucky 내보내기 완료!\n{0}프레임 저장:\n{1}", "ar": "اكتمل تصدير Lucky!\nتم تصدير {0} إطار:\n{1}",
+    },
+
+    # --- MP4 export ---
+    "menu_export_mp4": {
+        "zh": "另存为 MP4(&M)...", "en": "Save as &MP4...",
+        "ru": "Сохранить как &MP4...", "ja": "MP4として保存(&M)...",
+        "fr": "Enregistrer en &MP4...", "de": "Als &MP4 speichern...",
+        "es": "Guardar como &MP4...", "pt": "Salvar como &MP4...",
+        "ko": "MP4로 저장(&M)...", "ar": "حفظ كـ &MP4...",
+    },
+    "dlg_export_mp4_title": {
+        "zh": "导出 MP4", "en": "Export MP4",
+        "ru": "Экспорт MP4", "ja": "MP4エクスポート",
+        "fr": "Exporter MP4", "de": "MP4 exportieren",
+        "es": "Exportar MP4", "pt": "Exportar MP4",
+        "ko": "MP4 내보내기", "ar": "تصدير MP4",
+    },
+    "dlg_mp4_filter": {
+        "zh": "MP4 视频 (*.mp4)", "en": "MP4 Video (*.mp4)",
+        "ru": "Видео MP4 (*.mp4)", "ja": "MP4動画 (*.mp4)",
+        "fr": "Vidéo MP4 (*.mp4)", "de": "MP4-Video (*.mp4)",
+        "es": "Video MP4 (*.mp4)", "pt": "Vídeo MP4 (*.mp4)",
+        "ko": "MP4 비디오 (*.mp4)", "ar": "فيديو MP4 (*.mp4)",
+    },
+    "mp4_exporting": {
+        "zh": "正在导出 MP4...", "en": "Exporting MP4...",
+        "ru": "Экспорт MP4...", "ja": "MP4エクスポート中...",
+        "fr": "Exportation MP4...", "de": "MP4-Export...",
+        "es": "Exportando MP4...", "pt": "Exportando MP4...",
+        "ko": "MP4 내보내는 중...", "ar": "جارٍ تصدير MP4...",
+    },
+    "mp4_success": {
+        "zh": "MP4 导出完成！\n已导出 {0} 帧到:\n{1}", "en": "MP4 export complete!\nExported {0} frames to:\n{1}",
+        "ru": "Экспорт MP4 завершён!\n{0} кадров:\n{1}", "ja": "MP4出力完了！\n{0}フレーム:\n{1}",
+        "fr": "Export MP4 terminé!\n{0} images:\n{1}", "de": "MP4-Export abgeschlossen!\n{0} Bilder:\n{1}",
+        "es": "¡Export MP4 completado!\n{0} cuadros:\n{1}", "pt": "Exportação MP4 concluída!\n{0} quadros:\n{1}",
+        "ko": "MP4 내보내기 완료!\n{0}프레임:\n{1}", "ar": "اكتمل تصدير MP4!\n{0} إطار:\n{1}",
+    },
+    "mp4_error": {
+        "zh": "MP4 导出失败:\n{0}", "en": "MP4 export failed:\n{0}",
+        "ru": "Ошибка экспорта MP4:\n{0}", "ja": "MP4出力エラー:\n{0}",
+        "fr": "Échec export MP4:\n{0}", "de": "MP4-Export fehlgeschlagen:\n{0}",
+        "es": "Error al exportar MP4:\n{0}", "pt": "Falha na exportação MP4:\n{0}",
+        "ko": "MP4 내보내기 실패:\n{0}", "ar": "فشل تصدير MP4:\n{0}",
+    },
+    "mp4_fps_label": {
+        "zh": "帧率 (FPS):", "en": "Frame Rate (FPS):",
+        "ru": "Частота кадров (FPS):", "ja": "フレームレート (FPS):",
+        "fr": "Fréquence d'images (FPS):", "de": "Bildrate (FPS):",
+        "es": "Tasa de cuadros (FPS):", "pt": "Taxa de quadros (FPS):",
+        "ko": "프레임 레이트 (FPS):", "ar": "معدل الإطارات (FPS):",
+    },
+    "mp4_quality_label": {
+        "zh": "画质 (CRF: 越小越好):", "en": "Quality (CRF: lower=better):",
+        "ru": "Качество (CRF: ниже=лучше):", "ja": "画質 (CRF: 低=高画質):",
+        "fr": "Qualité (CRF: bas=meilleur):", "de": "Qualität (CRF: niedrig=besser):",
+        "es": "Calidad (CRF: menor=mejor):", "pt": "Qualidade (CRF: menor=melhor):",
+        "ko": "화질 (CRF: 낮을수록 좋음):", "ar": "الجودة (CRF: أقل=أفضل):",
+    },
+    "mp4_use_trim": {
+        "zh": "仅导出裁切范围", "en": "Export trim range only",
+        "ru": "Только обрезанный диапазон", "ja": "トリム範囲のみ",
+        "fr": "Exporter la plage de coupe uniquement", "de": "Nur Schnittbereich exportieren",
+        "es": "Solo rango recortado", "pt": "Somente faixa de corte",
+        "ko": "트림 범위만 내보내기", "ar": "نطاق القطع فقط",
+    },
+
+    "mp4_crop_roi": {
+        "zh": "裁剪到 ROI 区域", "en": "Crop to ROI region",
+        "ru": "Обрезать до ROI", "ja": "ROI領域にクロップ",
+        "fr": "Recadrer au ROI", "de": "Auf ROI zuschneiden",
+        "es": "Recortar a ROI", "pt": "Cortar para ROI",
+        "ko": "ROI 영역 자르기", "ar": "قص إلى ROI",
+    },
+    "mp4_crop_center": {
+        "zh": "目标居中裁剪 (需要 tracking.log)", "en": "Auto-center target (requires tracking.log)",
+        "ru": "Авто-центрирование цели (нужен tracking.log)", "ja": "ターゲット自動追尾 (tracking.log必要)",
+        "fr": "Centrage auto cible (tracking.log requis)", "de": "Ziel auto-zentrieren (tracking.log nötig)",
+        "es": "Auto-centrar objetivo (requiere tracking.log)", "pt": "Auto-centralizar alvo (requer tracking.log)",
+        "ko": "타겟 자동 중심 (tracking.log 필요)", "ar": "توسيط تلقائي (يتطلب tracking.log)",
+    },
+    "mp4_crop_size": {
+        "zh": "裁剪尺寸:", "en": "Crop size:",
+        "ru": "Размер обрезки:", "ja": "クロップサイズ:",
+        "fr": "Taille de recadrage:", "de": "Zuschneide-Größe:",
+        "es": "Tamaño de recorte:", "pt": "Tamanho do corte:",
+        "ko": "자르기 크기:", "ar": "حجم القص:",
+    },
+
     # --- About dialog ---
     "about_title": {
         "zh": "\u5173\u4e8e AstroSER \u64ad\u653e\u5668",

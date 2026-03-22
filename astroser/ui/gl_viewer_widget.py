@@ -433,7 +433,7 @@ class GLImageViewer(QOpenGLWidget):
         pen.setWidth(2)
         pen.setStyle(Qt.PenStyle.DashLine)
         painter.setPen(pen)
-        painter.setBrush(QBrush(QColor(0, 255, 0, 30)))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawRect(QRectF(p1, p2))
         painter.end()
 
