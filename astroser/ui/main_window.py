@@ -366,6 +366,7 @@ class MainWindow(QMainWindow):
         self._pipeline.brightness = self._adjustments.brightness
         self._pipeline.contrast = self._adjustments.contrast
         self._pipeline.gamma = self._adjustments.gamma
+        self._pipeline.sharpen = self._adjustments.sharpen
         self._pipeline.auto_stretch = self._adjustments.auto_stretch_enabled
         self._pipeline.solar_colorize = self._solar_action.isChecked()
 
@@ -375,6 +376,7 @@ class MainWindow(QMainWindow):
         self._export_mp4_action.setEnabled(True)
 
         self._file_info.update_info(ser)
+        self._adjustments.set_frame_size(ser.width, ser.height)
 
         self._status_file.setText(Path(filepath).name)
         self._status_info.setText(
@@ -441,10 +443,38 @@ class MainWindow(QMainWindow):
 
     def _on_frame_changed_gl(self, index: int, t0: float) -> None:
         """GL path: upload raw frame to GPU, shader does adjustments + debayer."""
+        viewer = self._viewer
+
+        # Deconvolution path: CPU-process + RL, upload pre-processed RGB
+        if self._adjustments.deconv_enabled and not self._engine.is_playing:
+            # Full 16-bit float pipeline → RL deconv → convert to uint8 for display
+            frame_f = self._pipeline.get_adjusted_frame_f32(index)
+            from ..core.deconvolution import richardson_lucy
+            frame_f = richardson_lucy(
+                frame_f,
+                self._adjustments.deconv_psf_radius,
+                self._adjustments.deconv_iterations,
+            )
+            # Convert float32 [0,1] → uint8 for GL upload
+            frame = np.clip(frame_f * 255.0, 0, 255).astype(np.uint8)
+            if frame.ndim == 2:
+                frame = np.stack([frame, frame, frame], axis=2)
+            # Upload as pre-processed: identity shader settings
+            viewer.brightness = 0.0
+            viewer.contrast = 1.0
+            viewer.gamma = 1.0
+            viewer.auto_stretch = False
+            viewer.solar_colorize = False
+            viewer.sharpen = 0.0
+            viewer.is_bayer = False
+            viewer.set_frame(frame, False, 1.0, 0.0, 1.0)
+            self._update_stats(index, t0)
+            return
+
+        # Normal GL path
         color_id = self._ser_file.color_id
         pixel_max = float((1 << self._ser_file.pixel_depth) - 1)
 
-        # For Bayer data, upload raw single-channel; GPU shader does debayer
         if color_id.is_bayer and color_id in _BAYER_OFFSETS:
             frame = self._pipeline.get_raw_frame(index)
             is_mono = False
@@ -456,11 +486,9 @@ class MainWindow(QMainWindow):
             is_bayer = False
             red_off, blue_off = (0.0, 0.0), (1.0, 1.0)
 
-        # GL normalizes textures by type max (255 for uint8, 65535 for uint16)
         type_max = 65535.0 if frame.dtype == np.uint16 else 255.0
         gl_rescale = type_max / pixel_max
 
-        # Compute auto-stretch percentiles if needed
         auto_lo, auto_hi = 0.0, 1.0
         if self._pipeline.auto_stretch:
             sample = frame
@@ -473,13 +501,12 @@ class MainWindow(QMainWindow):
             auto_lo = float(np.percentile(sample_f, self._pipeline.stretch_low))
             auto_hi = float(np.percentile(sample_f, self._pipeline.stretch_high))
 
-        # Update GL viewer uniforms and upload texture
-        viewer = self._viewer
         viewer.brightness = self._pipeline.brightness
         viewer.contrast = self._pipeline.contrast
         viewer.gamma = self._pipeline.gamma
         viewer.auto_stretch = self._pipeline.auto_stretch
         viewer.solar_colorize = self._pipeline.solar_colorize
+        viewer.sharpen = self._adjustments.sharpen
         viewer.is_bayer = is_bayer
         viewer.bayer_red_offset = red_off
         viewer.bayer_blue_offset = blue_off
@@ -521,6 +548,7 @@ class MainWindow(QMainWindow):
         self._pipeline.brightness = self._adjustments.brightness
         self._pipeline.contrast = self._adjustments.contrast
         self._pipeline.gamma = self._adjustments.gamma
+        self._pipeline.sharpen = self._adjustments.sharpen
         self._pipeline.auto_stretch = self._adjustments.auto_stretch_enabled
         if not self._use_gl:
             self._pipeline.invalidate_cache()
@@ -651,19 +679,14 @@ class MainWindow(QMainWindow):
             self._remove_analysis_tab(self._lucky_panel)
 
     def _export_mp4(self) -> None:
-        """Export current SER file to MP4."""
+        """Export current SER file to MP4, using settings from adjustments panel."""
         if self._ser_file is None or self._pipeline is None:
             return
 
-        has_roi = self._roi is not None
-        has_tracking = bool(self._analysis_tabs.indexOf(self._tracking_panel) >= 0
-                            and hasattr(self._tracking_panel, '_matched')
-                            and self._tracking_panel._matched)
-
-        # Build options dialog
+        # Simple export dialog: FPS, quality, trim only
         dlg = QDialog(self)
         dlg.setWindowTitle(tr("dlg_export_mp4_title"))
-        dlg.setMinimumWidth(360)
+        dlg.setMinimumWidth(340)
         layout = QVBoxLayout(dlg)
         form = QFormLayout()
 
@@ -697,47 +720,27 @@ class MainWindow(QMainWindow):
         trim_check.setEnabled(trim_active)
         form.addRow("", trim_check)
 
-        # Crop to ROI checkbox (always available — without ROI uses custom size centered)
-        crop_check = QCheckBox(tr("mp4_crop_roi"))
-        crop_check.setChecked(False)
-        form.addRow("", crop_check)
-
-        # Auto-center checkbox
-        center_check = QCheckBox(tr("mp4_crop_center"))
-        center_check.setChecked(False)
-        center_check.setEnabled(bool(has_roi and has_tracking))
-        form.addRow("", center_check)
-
-        # Crop size (for when no ROI but user wants manual crop size with auto-center)
-        crop_w_spin = QSpinBox()
-        crop_w_spin.setRange(64, self._ser_file.width)
-        crop_h_spin = QSpinBox()
-        crop_h_spin.setRange(64, self._ser_file.height)
-        if has_roi:
-            crop_w_spin.setValue(self._roi[2])
-            crop_h_spin.setValue(self._roi[3])
-        else:
-            crop_w_spin.setValue(min(640, self._ser_file.width))
-            crop_h_spin.setValue(min(480, self._ser_file.height))
-        size_layout = QHBoxLayout()
-        size_layout.addWidget(crop_w_spin)
-        size_layout.addWidget(QLabel("×"))
-        size_layout.addWidget(crop_h_spin)
-        form.addRow(tr("mp4_crop_size"), size_layout)
-
-        # Show/hide crop size based on crop checkbox
-        def _update_crop_ui():
-            use_crop = crop_check.isChecked()
-            center_check.setEnabled(bool(use_crop and has_tracking))
-            crop_w_spin.setEnabled(use_crop)
-            crop_h_spin.setEnabled(use_crop)
-            if not use_crop:
-                center_check.setChecked(False)
-
-        crop_check.toggled.connect(_update_crop_ui)
-        _update_crop_ui()
-
         layout.addLayout(form)
+
+        # Info: show current settings from panel
+        info_label = QLabel()
+        info_parts = []
+        if self._adjustments.crop_enabled:
+            cw, ch = self._adjustments.crop_size
+            info_parts.append(f"✂ {tr('mp4_crop_enable')} {cw}×{ch}")
+            if self._adjustments.center_target_enabled:
+                info_parts.append(f"◎ {tr('mp4_center_target')}")
+        if self._adjustments.deconv_enabled:
+            r = self._adjustments.deconv_psf_radius
+            n = self._adjustments.deconv_iterations
+            info_parts.append(f"✦ RL PSF={r:.1f} ×{n}")
+        if info_parts:
+            info_label.setText("\n".join(info_parts))
+            info_label.setStyleSheet(
+                "QLabel { color: #80c0ff; font-size: 11px; padding: 6px; "
+                "background: #0a1520; border: 1px solid #1e3050; border-radius: 4px; }"
+            )
+            layout.addWidget(info_label)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(dlg.accept)
@@ -758,27 +761,59 @@ class MainWindow(QMainWindow):
             start = 0
             end = self._ser_file.frame_count - 1
 
-        # Crop ROI
+        # Read crop settings from panel
         crop_roi = None
-        if crop_check.isChecked():
-            cw, ch = crop_w_spin.value(), crop_h_spin.value()
-            if has_roi:
+        centroids = None
+
+        if self._adjustments.crop_enabled:
+            cw, ch = self._adjustments.crop_size
+            cx = (self._ser_file.width - cw) // 2
+            cy = (self._ser_file.height - ch) // 2
+            if self._roi is not None and not self._adjustments.center_target_enabled:
                 cx, cy = self._roi[0], self._roi[1]
-            else:
-                cx = (self._ser_file.width - cw) // 2
-                cy = (self._ser_file.height - ch) // 2
             crop_roi = (cx, cy, cw, ch)
 
-        # Tracking offsets for auto-centering
-        tracking_offsets = None
-        if center_check.isChecked() and has_tracking:
-            matched = self._tracking_panel._matched
-            tracking_offsets = []
-            for entry in matched:
-                if entry is not None:
-                    tracking_offsets.append((entry.err_dx, entry.err_dy))
-                else:
-                    tracking_offsets.append(None)
+            # Auto-detect centroids
+            if self._adjustments.center_target_enabled:
+                threshold_pct = self._adjustments.center_threshold
+                total_detect = end - start + 1
+
+                detect_progress = QProgressDialog(
+                    tr("mp4_detecting"), tr("menu_exit"), 0, total_detect, self)
+                detect_progress.setWindowTitle(tr("dlg_export_mp4_title"))
+                detect_progress.setWindowModality(Qt.WindowModality.WindowModal)
+                detect_progress.setMinimumDuration(0)
+                detect_progress.setValue(0)
+
+                detect_cancelled = [False]
+
+                def on_detect_progress(current, total_frames):
+                    detect_progress.setValue(current)
+                    if detect_progress.wasCanceled():
+                        detect_cancelled[0] = True
+                        return False
+                    from PySide6.QtWidgets import QApplication
+                    QApplication.processEvents()
+                    return True
+
+                from ..core.centroid import detect_all_centroids
+                centroids = detect_all_centroids(
+                    self._ser_file,
+                    start, end, threshold_pct,
+                    progress_cb=on_detect_progress,
+                )
+                detect_progress.close()
+
+                if detect_cancelled[0]:
+                    return
+
+        # Read deconvolution settings from panel
+        deconv_params = None
+        if self._adjustments.deconv_enabled:
+            deconv_params = (
+                self._adjustments.deconv_psf_radius,
+                self._adjustments.deconv_iterations,
+            )
 
         # Output path
         src = self._ser_file.filepath
@@ -791,7 +826,6 @@ class MainWindow(QMainWindow):
 
         total = end - start + 1
 
-        # Progress dialog
         progress = QProgressDialog(tr("mp4_exporting"), tr("menu_exit"), 0, total, self)
         progress.setWindowTitle(tr("dlg_export_mp4_title"))
         progress.setWindowModality(Qt.WindowModality.WindowModal)
@@ -815,7 +849,8 @@ class MainWindow(QMainWindow):
                 self._ser_file, self._pipeline,
                 filepath, start, end, fps, quality,
                 crop_roi=crop_roi,
-                tracking_offsets=tracking_offsets,
+                centroids=centroids,
+                deconv=deconv_params,
                 progress_cb=on_progress,
             )
             progress.close()

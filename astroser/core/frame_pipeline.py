@@ -61,6 +61,7 @@ class FramePipeline:
         self.stretch_low: float = 0.1
         self.stretch_high: float = 99.9
         self.solar_colorize: bool = False
+        self.sharpen: float = 0.0
 
         # Solar colormap LUT (256 entries, RGB)
         self._solar_lut = self._build_solar_lut()
@@ -92,6 +93,72 @@ class FramePipeline:
     def get_raw_frame(self, index: int) -> np.ndarray:
         """Get the raw frame data (for statistics)."""
         return self._get_raw(index)
+
+    def get_adjusted_frame(self, index: int) -> np.ndarray:
+        """Get fully adjusted frame as uint8 numpy array.
+
+        Applies debayer + brightness/contrast/gamma/auto-stretch.
+        Result matches what the user sees in the viewer.
+        """
+        raw = self._get_raw(index)
+        return self._to_display(raw)
+
+    def get_adjusted_frame_f32(self, index: int) -> np.ndarray:
+        """Get fully adjusted frame as float32 [0..1] array.
+
+        Full 16-bit precision preserved through the entire pipeline.
+        No quantization to uint8 until the caller decides.
+        Returns float32 (H,W) or (H,W,3), range [0,1].
+        """
+        raw = self._get_raw(index)
+        color_id = self._ser.color_id
+
+        # Debayer
+        if color_id.is_bayer:
+            from .debayer import debayer
+            img = debayer(raw, color_id)
+        elif color_id == ColorID.BGR:
+            img = raw[:, :, ::-1].copy()
+        else:
+            img = raw
+
+        max_val = (1 << self._ser.pixel_depth) - 1
+
+        # Convert to float32 [0,1] — preserves full bit depth
+        img_f = img.astype(np.float32) / max_val
+
+        # Auto-stretch
+        if self.auto_stretch:
+            sample = img_f
+            if img_f.size > 500000:
+                if img_f.ndim == 2:
+                    sample = img_f[::4, ::4]
+                else:
+                    sample = img_f[::4, ::4, :]
+            auto_lo = float(np.percentile(sample, self.stretch_low))
+            auto_hi = float(np.percentile(sample, self.stretch_high))
+            if auto_hi > auto_lo:
+                img_f = (img_f - auto_lo) / (auto_hi - auto_lo)
+
+        # Contrast + brightness
+        if self.contrast != 1.0 or self.brightness != 0.0:
+            img_f = img_f * self.contrast + self.brightness
+
+        # Gamma
+        if self.gamma != 1.0:
+            np.clip(img_f, 0.0, None, out=img_f)
+            np.power(img_f, 1.0 / self.gamma, out=img_f)
+
+        np.clip(img_f, 0.0, 1.0, out=img_f)
+
+        # Sharpening (float domain)
+        if self.sharpen > 0.0:
+            from scipy.ndimage import uniform_filter
+            blur = uniform_filter(img_f, size=3)
+            img_f = img_f + self.sharpen * (img_f - blur)
+            np.clip(img_f, 0.0, 1.0, out=img_f)
+
+        return img_f
 
     def get_display_frame(self, index: int) -> np.ndarray:
         """Get debayered frame for GPU rendering (no LUT/adjustments).
@@ -200,14 +267,18 @@ class FramePipeline:
 
         # Apply LUT
         if max_val <= 65535:
-            # Direct LUT indexing
-            return lut[img]
+            result = lut[img]
         else:
-            # Fallback for unusual bit depths
             img_f = img.astype(np.float32) / max_val
             img_f = self._apply_adjustments_float(img_f, auto_lo, auto_hi)
             np.clip(img_f, 0.0, 1.0, out=img_f)
-            return (img_f * 255).astype(np.uint8)
+            result = (img_f * 255).astype(np.uint8)
+
+        # Apply sharpening (unsharp mask)
+        if self.sharpen > 0.0:
+            result = self._apply_sharpen(result, self.sharpen)
+
+        return result
 
     def _apply_adjustments_float(self, img: np.ndarray,
                                   auto_lo: float, auto_hi: float) -> np.ndarray:
@@ -220,6 +291,14 @@ class FramePipeline:
             img = np.clip(img, 0.0, None)
             img = np.power(img, 1.0 / self.gamma)
         return img
+
+    @staticmethod
+    def _apply_sharpen(img: np.ndarray, strength: float) -> np.ndarray:
+        """Apply unsharp mask sharpening to uint8 image."""
+        from scipy.ndimage import uniform_filter
+        blur = uniform_filter(img.astype(np.float32), size=3)
+        sharp = img.astype(np.float32) + strength * (img.astype(np.float32) - blur)
+        return np.clip(sharp, 0, 255).astype(np.uint8)
 
     @staticmethod
     def _build_solar_lut() -> np.ndarray:

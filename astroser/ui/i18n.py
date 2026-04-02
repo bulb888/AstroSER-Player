@@ -449,6 +449,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ko": "\ub300\ube44",
         "ar": "\u0627\u0644\u062a\u0628\u0627\u064a\u0646",
     },
+    "adj_sharpen": {
+        "zh": "锐化", "en": "Sharpen",
+        "ru": "Резкость", "ja": "シャープ",
+        "fr": "Netteté", "de": "Schärfe",
+        "es": "Nitidez", "pt": "Nitidez",
+        "ko": "선명하게", "ar": "حدة",
+    },
     "adj_auto_stretch": {
         "zh": "\u81ea\u52a8\u62c9\u4f38",
         "en": "Auto Stretch",
@@ -1073,6 +1080,13 @@ _STRINGS: dict[str, dict[str, str]] = {
         "ko": "트림 범위만 내보내기", "ar": "نطاق القطع فقط",
     },
 
+    "mp4_crop_enable": {
+        "zh": "裁剪画面", "en": "Crop frame",
+        "ru": "Обрезать кадр", "ja": "フレームをクロップ",
+        "fr": "Recadrer l'image", "de": "Bild zuschneiden",
+        "es": "Recortar imagen", "pt": "Cortar imagem",
+        "ko": "프레임 자르기", "ar": "قص الإطار",
+    },
     "mp4_crop_roi": {
         "zh": "裁剪到 ROI 区域", "en": "Crop to ROI region",
         "ru": "Обрезать до ROI", "ja": "ROI領域にクロップ",
@@ -1080,12 +1094,12 @@ _STRINGS: dict[str, dict[str, str]] = {
         "es": "Recortar a ROI", "pt": "Cortar para ROI",
         "ko": "ROI 영역 자르기", "ar": "قص إلى ROI",
     },
-    "mp4_crop_center": {
-        "zh": "目标居中裁剪 (需要 tracking.log)", "en": "Auto-center target (requires tracking.log)",
-        "ru": "Авто-центрирование цели (нужен tracking.log)", "ja": "ターゲット自動追尾 (tracking.log必要)",
-        "fr": "Centrage auto cible (tracking.log requis)", "de": "Ziel auto-zentrieren (tracking.log nötig)",
-        "es": "Auto-centrar objetivo (requiere tracking.log)", "pt": "Auto-centralizar alvo (requer tracking.log)",
-        "ko": "타겟 자동 중심 (tracking.log 필요)", "ar": "توسيط تلقائي (يتطلب tracking.log)",
+    "mp4_center_target": {
+        "zh": "目标居中 (自动检测)", "en": "Center target (auto-detect)",
+        "ru": "Центрировать цель (авто)", "ja": "ターゲット中央揃え (自動検出)",
+        "fr": "Centrer la cible (auto)", "de": "Ziel zentrieren (auto)",
+        "es": "Centrar objetivo (auto)", "pt": "Centralizar alvo (auto)",
+        "ko": "타겟 중심 맞춤 (자동)", "ar": "توسيط الهدف (تلقائي)",
     },
     "mp4_crop_size": {
         "zh": "裁剪尺寸:", "en": "Crop size:",
@@ -1093,6 +1107,48 @@ _STRINGS: dict[str, dict[str, str]] = {
         "fr": "Taille de recadrage:", "de": "Zuschneide-Größe:",
         "es": "Tamaño de recorte:", "pt": "Tamanho do corte:",
         "ko": "자르기 크기:", "ar": "حجم القص:",
+    },
+    "mp4_threshold": {
+        "zh": "检测阈值:", "en": "Detection threshold:",
+        "ru": "Порог обнаружения:", "ja": "検出しきい値:",
+        "fr": "Seuil de détection:", "de": "Erkennungsschwelle:",
+        "es": "Umbral de detección:", "pt": "Limiar de detecção:",
+        "ko": "감지 임계값:", "ar": "عتبة الكشف:",
+    },
+    "mp4_detecting": {
+        "zh": "正在检测目标质心...", "en": "Detecting target centroid...",
+        "ru": "Обнаружение центроида цели...", "ja": "ターゲットの重心を検出中...",
+        "fr": "Détection du centroïde...", "de": "Erkenne Zielschwerpunkt...",
+        "es": "Detectando centroide...", "pt": "Detectando centroide...",
+        "ko": "타겟 중심 감지 중...", "ar": "كشف مركز الهدف...",
+    },
+    "mp4_deconv_enable": {
+        "zh": "Richardson-Lucy 反卷积", "en": "Richardson-Lucy deconvolution",
+        "ru": "Деконволюция Ричардсона-Люси", "ja": "リチャードソン・ルーシー逆畳み込み",
+        "fr": "Déconvolution Richardson-Lucy", "de": "Richardson-Lucy Entfaltung",
+        "es": "Deconvolución Richardson-Lucy", "pt": "Deconvolução Richardson-Lucy",
+        "ko": "Richardson-Lucy 디컨볼루션", "ar": "إزالة التشويه Richardson-Lucy",
+    },
+    "mp4_deconv_radius": {
+        "zh": "PSF 半径:", "en": "PSF radius:",
+        "ru": "Радиус PSF:", "ja": "PSF半径:",
+        "fr": "Rayon PSF:", "de": "PSF-Radius:",
+        "es": "Radio PSF:", "pt": "Raio PSF:",
+        "ko": "PSF 반경:", "ar": "نصف قطر PSF:",
+    },
+    "mp4_deconv_iters": {
+        "zh": "迭代次数:", "en": "Iterations:",
+        "ru": "Итерации:", "ja": "反復回数:",
+        "fr": "Itérations:", "de": "Iterationen:",
+        "es": "Iteraciones:", "pt": "Iterações:",
+        "ko": "반복 횟수:", "ar": "التكرارات:",
+    },
+    "mp4_deconv_processing": {
+        "zh": "正在反卷积处理...", "en": "Applying deconvolution...",
+        "ru": "Применение деконволюции...", "ja": "逆畳み込み処理中...",
+        "fr": "Application de la déconvolution...", "de": "Entfaltung wird angewendet...",
+        "es": "Aplicando deconvolución...", "pt": "Aplicando deconvolução...",
+        "ko": "디컨볼루션 적용 중...", "ar": "تطبيق إزالة التشويه...",
     },
 
     # --- About dialog ---

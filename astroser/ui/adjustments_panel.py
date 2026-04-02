@@ -1,9 +1,9 @@
-"""Image adjustments panel with sliders."""
+"""Image adjustments panel with sliders, deconvolution, and crop controls."""
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSlider,
-    QCheckBox, QGroupBox, QPushButton,
+    QCheckBox, QGroupBox, QPushButton, QSpinBox,
 )
 
 from .i18n import tr, I18n
@@ -65,9 +65,10 @@ class _LabeledSlider(QWidget):
 
 
 class AdjustmentsPanel(QWidget):
-    """Panel with image adjustment controls."""
+    """Panel with image adjustment, deconvolution, and crop controls."""
 
     adjustments_changed = Signal()
+    crop_changed = Signal()  # Emitted when crop/center settings change
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -77,7 +78,9 @@ class AdjustmentsPanel(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
+        layout.setSpacing(4)
 
+        # --- Image adjustments group ---
         self._group = QGroupBox()
         group_layout = QVBoxLayout(self._group)
         group_layout.setSpacing(4)
@@ -93,6 +96,10 @@ class AdjustmentsPanel(QWidget):
         self._gamma = _LabeledSlider("Gamma", 0.1, 3.0, 1.0, 0.01)
         self._gamma.value_changed.connect(lambda _: self.adjustments_changed.emit())
         group_layout.addWidget(self._gamma)
+
+        self._sharpen = _LabeledSlider("", 0.0, 5.0, 0.0, 0.1)
+        self._sharpen.value_changed.connect(lambda _: self.adjustments_changed.emit())
+        group_layout.addWidget(self._sharpen)
 
         stretch_row = QHBoxLayout()
         stretch_row.setContentsMargins(0, 2, 0, 2)
@@ -112,6 +119,70 @@ class AdjustmentsPanel(QWidget):
         group_layout.addWidget(self._reset_btn)
 
         layout.addWidget(self._group)
+
+        # --- Deconvolution group ---
+        self._deconv_group = QGroupBox()
+        deconv_layout = QVBoxLayout(self._deconv_group)
+        deconv_layout.setSpacing(4)
+
+        self._deconv_enable = QCheckBox()
+        self._deconv_enable.setChecked(False)
+        self._deconv_enable.setStyleSheet("QCheckBox { font-size: 11px; color: #999999; }")
+        self._deconv_enable.toggled.connect(lambda _: self.adjustments_changed.emit())
+        deconv_layout.addWidget(self._deconv_enable)
+
+        self._psf_radius = _LabeledSlider("PSF", 0.5, 5.0, 1.5, 0.1)
+        self._psf_radius.value_changed.connect(lambda _: self.adjustments_changed.emit())
+        deconv_layout.addWidget(self._psf_radius)
+
+        self._deconv_iters = _LabeledSlider("", 1.0, 50.0, 10.0, 1.0)
+        self._deconv_iters.value_changed.connect(lambda _: self.adjustments_changed.emit())
+        deconv_layout.addWidget(self._deconv_iters)
+
+        layout.addWidget(self._deconv_group)
+
+        # --- Crop group ---
+        self._crop_group = QGroupBox()
+        crop_layout = QVBoxLayout(self._crop_group)
+        crop_layout.setSpacing(4)
+
+        self._crop_enable = QCheckBox()
+        self._crop_enable.setChecked(False)
+        self._crop_enable.setStyleSheet("QCheckBox { font-size: 11px; color: #999999; }")
+        self._crop_enable.toggled.connect(self._on_crop_toggled)
+        crop_layout.addWidget(self._crop_enable)
+
+        # Crop size
+        size_row = QHBoxLayout()
+        size_row.setContentsMargins(0, 0, 0, 0)
+        self._crop_w_label = QLabel()
+        self._crop_w_label.setStyleSheet(_SLIDER_LABEL_STYLE)
+        size_row.addWidget(self._crop_w_label)
+        self._crop_w = QSpinBox()
+        self._crop_w.setRange(64, 9999)
+        self._crop_w.setValue(640)
+        self._crop_w.valueChanged.connect(lambda _: self.crop_changed.emit())
+        size_row.addWidget(self._crop_w)
+        size_row.addWidget(QLabel("×"))
+        self._crop_h = QSpinBox()
+        self._crop_h.setRange(64, 9999)
+        self._crop_h.setValue(480)
+        self._crop_h.valueChanged.connect(lambda _: self.crop_changed.emit())
+        size_row.addWidget(self._crop_h)
+        crop_layout.addLayout(size_row)
+
+        # Center target
+        self._center_target = QCheckBox()
+        self._center_target.setChecked(False)
+        self._center_target.setStyleSheet("QCheckBox { font-size: 11px; color: #999999; }")
+        crop_layout.addWidget(self._center_target)
+
+        # Detection threshold
+        self._threshold = _LabeledSlider("", 50.0, 98.0, 85.0, 1.0)
+        crop_layout.addWidget(self._threshold)
+
+        layout.addWidget(self._crop_group)
+
         layout.addStretch()
 
         self.retranslate()
@@ -120,15 +191,45 @@ class AdjustmentsPanel(QWidget):
         self._group.setTitle(tr("group_adjustments"))
         self._brightness.set_label(tr("adj_brightness"))
         self._contrast.set_label(tr("adj_contrast"))
+        self._sharpen.set_label(tr("adj_sharpen"))
         self._auto_stretch.setText(tr("adj_auto_stretch"))
         self._reset_btn.setText(tr("btn_reset"))
+
+        self._deconv_group.setTitle(tr("mp4_deconv_enable"))
+        self._deconv_enable.setText(tr("mp4_deconv_enable"))
+        self._deconv_iters.set_label(tr("mp4_deconv_iters"))
+
+        self._crop_group.setTitle(tr("mp4_crop_enable"))
+        self._crop_enable.setText(tr("mp4_crop_enable"))
+        self._crop_w_label.setText(tr("mp4_crop_size"))
+        self._center_target.setText(tr("mp4_center_target"))
+        self._threshold.set_label(tr("mp4_threshold"))
 
     def _reset(self) -> None:
         self._brightness.reset()
         self._contrast.reset()
         self._gamma.reset()
+        self._sharpen.reset()
         self._auto_stretch.setChecked(False)
         self.adjustments_changed.emit()
+
+    def _on_crop_toggled(self, checked: bool) -> None:
+        self._crop_w.setEnabled(checked)
+        self._crop_h.setEnabled(checked)
+        self._center_target.setEnabled(checked)
+        self._threshold.setEnabled(checked)
+        self.crop_changed.emit()
+
+    def set_frame_size(self, width: int, height: int) -> None:
+        """Update crop spinbox ranges to match loaded frame size."""
+        self._crop_w.setRange(64, width)
+        self._crop_h.setRange(64, height)
+        if self._crop_w.value() > width:
+            self._crop_w.setValue(width)
+        if self._crop_h.value() > height:
+            self._crop_h.setValue(height)
+
+    # --- Properties ---
 
     @property
     def brightness(self) -> float:
@@ -143,5 +244,37 @@ class AdjustmentsPanel(QWidget):
         return self._gamma.value()
 
     @property
+    def sharpen(self) -> float:
+        return self._sharpen.value()
+
+    @property
     def auto_stretch_enabled(self) -> bool:
         return self._auto_stretch.isChecked()
+
+    @property
+    def deconv_enabled(self) -> bool:
+        return self._deconv_enable.isChecked()
+
+    @property
+    def deconv_psf_radius(self) -> float:
+        return self._psf_radius.value()
+
+    @property
+    def deconv_iterations(self) -> int:
+        return int(self._deconv_iters.value())
+
+    @property
+    def crop_enabled(self) -> bool:
+        return self._crop_enable.isChecked()
+
+    @property
+    def crop_size(self) -> tuple[int, int]:
+        return self._crop_w.value(), self._crop_h.value()
+
+    @property
+    def center_target_enabled(self) -> bool:
+        return self._center_target.isChecked()
+
+    @property
+    def center_threshold(self) -> float:
+        return self._threshold.value()

@@ -56,6 +56,7 @@ uniform bool u_autoStretch;
 uniform bool u_solarColorize;
 uniform bool u_isMono;
 uniform float u_maxVal;
+uniform float u_sharpen;  // 0.0 = off, 1.0+ = strong sharpening
 
 // Bayer demosaic uniforms
 uniform bool u_isBayer;
@@ -149,6 +150,41 @@ void main() {
 
     color = clamp(color, 0.0, 1.0);
 
+    // Sharpening (Laplacian unsharp mask on processed image)
+    if (u_sharpen > 0.0) {
+        vec2 texel = 1.0 / vec2(textureSize(u_texture, 0));
+
+        // Sample 4 direct neighbors from texture, apply same basic adjustments
+        vec3 n[4];
+        vec2 offsets[4] = vec2[4](
+            vec2(-texel.x, 0), vec2(texel.x, 0),
+            vec2(0, -texel.y), vec2(0, texel.y)
+        );
+
+        for (int j = 0; j < 4; j++) {
+            vec3 s;
+            if (u_isBayer) {
+                s = debayer_bilinear(vTexCoord + offsets[j]) * u_maxVal;
+            } else {
+                vec4 t = texture(u_texture, vTexCoord + offsets[j]);
+                s = u_isMono ? vec3(t.r) : t.rgb;
+                s *= u_maxVal;
+            }
+            if (u_autoStretch && u_autoHi > u_autoLo)
+                s = (s - u_autoLo) / (u_autoHi - u_autoLo);
+            s = s * u_contrast + u_brightness;
+            s = clamp(s, 0.0, 1.0);
+            if (u_gamma != 1.0)
+                s = pow(s, vec3(1.0 / u_gamma));
+            n[j] = clamp(s, 0.0, 1.0);
+        }
+
+        // Laplacian: detail = center - average(neighbors)
+        vec3 avg = (n[0] + n[1] + n[2] + n[3]) * 0.25;
+        color = color + u_sharpen * (color - avg);
+        color = clamp(color, 0.0, 1.0);
+    }
+
     // Solar false color
     if (u_solarColorize) {
         float gray = dot(color, vec3(0.299, 0.587, 0.114));
@@ -191,6 +227,7 @@ class GLImageViewer(QOpenGLWidget):
         self.auto_lo = 0.0
         self.auto_hi = 1.0
         self.solar_colorize = False
+        self.sharpen = 0.0
         self.is_mono = True
         self.is_bayer = False
         self.bayer_red_offset = (0.0, 0.0)
@@ -251,6 +288,7 @@ class GLImageViewer(QOpenGLWidget):
         self._u_isBayer = GL.glGetUniformLocation(pid, "u_isBayer")
         self._u_bayerRedOffset = GL.glGetUniformLocation(pid, "u_bayerRedOffset")
         self._u_bayerBlueOffset = GL.glGetUniformLocation(pid, "u_bayerBlueOffset")
+        self._u_sharpen = GL.glGetUniformLocation(pid, "u_sharpen")
         self._u_texture = GL.glGetUniformLocation(pid, "u_texture")
         self._u_solarLut = GL.glGetUniformLocation(pid, "u_solarLut")
 
@@ -394,6 +432,7 @@ class GLImageViewer(QOpenGLWidget):
         GL.glUniform1f(self._u_autoHi, self.auto_hi)
         GL.glUniform1i(self._u_autoStretch, int(self.auto_stretch))
         GL.glUniform1i(self._u_solarColorize, int(self.solar_colorize))
+        GL.glUniform1f(self._u_sharpen, self.sharpen)
         GL.glUniform1i(self._u_isMono, int(self.is_mono))
         GL.glUniform1f(self._u_maxVal, self.max_val)
         GL.glUniform1i(self._u_isBayer, int(self.is_bayer))
